@@ -48,4 +48,12 @@ public class User extends BaseEntity {
         this.provider = provider;
         this.providerUserId = providerUserId;
     }
+
+    public void changeNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    public void changeWorkEndTime(LocalTime workEndTime) {
+        this.workEndTime = workEndTime;
+    }
 }
