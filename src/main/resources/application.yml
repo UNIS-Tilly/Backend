@@ -31,6 +31,16 @@ springdoc:
   swagger-ui:
     enabled: true
 
+jwt:
+  # TODO(NOTICE-039): JWT 서명 키 필요 (.env의 JWT_SECRET, HS256 기준 최소 32바이트)
+  secret: ${JWT_SECRET}
+
+# Refresh Token 쿠키 속성. local 프로파일에서는 http로도 테스트할 수 있게 완화한다 (아래 local 블록에서 재정의).
+app:
+  cookie:
+    secure: true
+    same-site: None
+
 ---
 spring:
   config:
@@ -42,3 +52,14 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+
+app:
+  cookie:
+    secure: false
+    same-site: Lax
