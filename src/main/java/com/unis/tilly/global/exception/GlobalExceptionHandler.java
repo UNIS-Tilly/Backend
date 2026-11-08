@@ -8,6 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -44,6 +45,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatchException(MethodArgumentTypeMismatchException e) {
         return ResponseEntity.status(ErrorCode.BAD_REQUEST.getStatus())
                 .body(ApiResponse.fail(ErrorCode.BAD_REQUEST, "요청 파라미터 형식이 올바르지 않습니다."));
+    }
+
+    // 일치하는 핸들러가 없는 경로(존재하지 않는 엔드포인트, local 프로파일이 아니라 빈이 없는 개발용 엔드포인트 등).
+    // 아래 Exception 캐치올보다 먼저 와야 한다 — 없으면 404가 500으로 바뀐다.
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFoundException(NoResourceFoundException e) {
+        return ResponseEntity.status(404)
+                .body(ApiResponse.fail("NOT_FOUND", "요청한 경로를 찾을 수 없습니다."));
     }
 
     // 그 외 예기치 못한 오류: 상세는 서버 로그에만 남기고, 응답에는 일반 메시지만 반환한다.

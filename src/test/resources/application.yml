@@ -1,0 +1,3 @@
+# 테스트 전용 값. 실제 운영 비밀값이 아니며 실제 서명 키와 무관하다.
+jwt:
+  secret: test-only-jwt-signing-key-not-for-production-use-0123456789

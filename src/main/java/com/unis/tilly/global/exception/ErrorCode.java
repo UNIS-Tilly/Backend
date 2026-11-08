@@ -10,6 +10,7 @@ public enum ErrorCode {
     // Default
     INTERNAL_SERVER_ERROR(500, "서버 내부 에러가 발생했습니다."),
     BAD_REQUEST(400, "잘못된 요청입니다."),
+    FORBIDDEN(403, "접근 권한이 없습니다."),
 
     // Auth - 401 (소셜 로그인·가입 관련 코드는 인증 단계에서 추가)
     ACCESS_TOKEN_REQUIRED(401, "Access Token이 필요합니다."),
