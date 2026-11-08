@@ -11,8 +11,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-// 로그인·가입·재발급 세부 API가 확정되기 전이라 구글/카카오 연동은 넣지 않는다 (auth-social 단위에서 추가).
-// 여기서는 JWT 검증·인가 흐름만 구성한다.
+// 카카오 실제 연동은 별도 요청이 있을 때 추가한다 (D-30, 구글 우선).
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -34,7 +33,8 @@ public class SecurityConfig {
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/auth/dev-login", "/api/auth/reissue").permitAll()
+                        .requestMatchers("/api/auth/dev-login", "/api/auth/reissue",
+                                "/api/auth/login/google", "/api/auth/register").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(

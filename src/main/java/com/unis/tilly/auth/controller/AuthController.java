@@ -1,6 +1,11 @@
 package com.unis.tilly.auth.controller;
 
+import com.unis.tilly.auth.dto.GoogleLoginRequest;
+import com.unis.tilly.auth.dto.LoginResponse;
+import com.unis.tilly.auth.dto.RegisterRequest;
+import com.unis.tilly.auth.dto.RegisterResponse;
 import com.unis.tilly.auth.dto.ReissueResponse;
+import com.unis.tilly.auth.service.AuthService;
 import com.unis.tilly.auth.service.TokenService;
 import com.unis.tilly.global.common.response.ApiResponse;
 import com.unis.tilly.global.common.response.SuccessMessage;
@@ -8,15 +13,17 @@ import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
 import com.unis.tilly.global.security.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// 구글·카카오 실제 연동(POST /api/auth/login/{provider}, /register)은 auth-social 단위에서 추가한다.
+// 카카오 실제 연동은 별도 요청이 있을 때 추가한다 (D-30, 구글 우선).
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -27,6 +34,25 @@ public class AuthController {
     private static final String CLIENT_HEADER_VALUE = "web";
 
     private final TokenService tokenService;
+    private final AuthService authService;
+
+    @PostMapping("/login/google")
+    public ApiResponse<LoginResponse> loginWithGoogle(@RequestBody @Valid GoogleLoginRequest request,
+                                                        HttpServletResponse response) {
+        AuthService.LoginOutcome outcome = authService.loginWithGoogle(request.code());
+        if (outcome.refreshToken() != null) {
+            tokenService.setRefreshCookie(response, outcome.refreshToken());
+        }
+        return ApiResponse.success(SuccessMessage.OK.message(), outcome.response());
+    }
+
+    @PostMapping("/register")
+    public ApiResponse<RegisterResponse> register(@RequestBody @Valid RegisterRequest request,
+                                                    HttpServletResponse response) {
+        AuthService.RegisterOutcome outcome = authService.register(request.signupToken(), request.nickname());
+        tokenService.setRefreshCookie(response, outcome.refreshToken());
+        return ApiResponse.success(SuccessMessage.OK.message(), outcome.response());
+    }
 
     // ST-02
     @PostMapping("/logout")
