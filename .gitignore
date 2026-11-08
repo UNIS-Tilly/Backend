@@ -1,0 +1,18 @@
+/guideline/
+CLAUDE.md
+NOTICE.md
+.env
+application-local.yml
+.idea/
+
+# 빌드 산출물 · 로그 (RULES.md 6.1)
+build/
+.gradle/
+*.log
+out/
+*.iml
+.DS_Store
+
+# 추가 환경변수 파일 (.env.example은 예외)
+.env.*
+!.env.example
