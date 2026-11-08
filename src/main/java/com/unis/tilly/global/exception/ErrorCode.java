@@ -12,13 +12,17 @@ public enum ErrorCode {
     BAD_REQUEST(400, "잘못된 요청입니다."),
     FORBIDDEN(403, "접근 권한이 없습니다."),
 
-    // Auth - 401 (소셜 로그인·가입 관련 코드는 인증 단계에서 추가)
+    // Auth - 401 (카카오 로그인 관련 코드는 추가될 때 반영)
     ACCESS_TOKEN_REQUIRED(401, "Access Token이 필요합니다."),
     INVALID_ACCESS_TOKEN(401, "유효하지 않은 Access Token입니다."),
     EXPIRED_ACCESS_TOKEN(401, "만료된 Access Token입니다."),
     REFRESH_TOKEN_REQUIRED(401, "Refresh Token이 필요합니다."),
     INVALID_REFRESH_TOKEN(401, "유효하지 않은 Refresh Token입니다."),
     EXPIRED_REFRESH_TOKEN(401, "만료된 Refresh Token입니다."),
+    SIGNUP_TOKEN_REQUIRED(401, "가입 토큰이 필요합니다."),
+    INVALID_SIGNUP_TOKEN(401, "유효하지 않은 가입 토큰입니다."),
+    EXPIRED_SIGNUP_TOKEN(401, "만료된 가입 토큰입니다."),
+    GOOGLE_AUTH_FAILED(502, "구글 인증에 실패했습니다."),
 
     // User
     USER_NOT_FOUND(404, "존재하지 않는 사용자입니다."),
