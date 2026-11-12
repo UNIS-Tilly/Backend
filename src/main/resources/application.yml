@@ -42,6 +42,23 @@ google:
   # TODO(NOTICE-015): 구글 콘솔에 등록한 Redirect URI와 정확히 같은 값이어야 함 (.env의 GOOGLE_REDIRECT_URI)
   redirect-uri: ${GOOGLE_REDIRECT_URI}
 
+# 외부 AI: Gemini (Spring이 REST로 직접 호출, 무료 모델만 사용 — 사용자 결정 2026-11-12)
+ai:
+  gemini:
+    # TODO(NOTICE-016): Gemini API 키 (.env의 GEMINI_API_KEY). 결제를 연결하지 않은 무료 등급 키 권장
+    api-key: ${GEMINI_API_KEY}
+    # TODO(NOTICE-016): 호출 호스트 (.env의 GEMINI_BASE_URL). 경로(/v1beta/models/{model}:generateContent)는 코드가 붙인다
+    base-url: ${GEMINI_BASE_URL}
+    # TODO(NOTICE-016): 사용할 모델 (.env의 GEMINI_MODEL). 아래 허용 목록에 있어야 기동된다
+    model: ${GEMINI_MODEL}
+    # TODO(NOTICE-016): 무료임을 직접 확인한 모델만 쉼표로 (.env의 GEMINI_ALLOWED_MODELS)
+    allowed-models: ${GEMINI_ALLOWED_MODELS}
+    question-timeout: 15s
+    insight-timeout: 60s
+    max-retries: 2
+    retry-backoff: 1s
+    validation-retries: 1
+
 # Refresh Token 쿠키 속성. local 프로파일에서는 http로도 테스트할 수 있게 완화한다 (아래 local 블록에서 재정의).
 app:
   cookie:
