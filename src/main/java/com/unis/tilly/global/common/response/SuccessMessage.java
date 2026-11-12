@@ -10,7 +10,7 @@ public record SuccessMessage(String message) {
     public static final SuccessMessage LOGOUT = new SuccessMessage("로그아웃되었습니다.");
 
     // User
-    public static final SuccessMessage NICKNAME_UPDATED = new SuccessMessage("닉네임이 변경되었습니다.");
+    public static final SuccessMessage PROFILE_UPDATED = new SuccessMessage("회원 정보가 수정되었습니다.");
     public static final SuccessMessage WORK_END_TIME_UPDATED = new SuccessMessage("퇴근 시간이 변경되었습니다.");
     public static final SuccessMessage WITHDRAWAL_COMPLETED = new SuccessMessage("탈퇴가 완료되었습니다.");
 

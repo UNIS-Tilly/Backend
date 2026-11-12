@@ -49,7 +49,8 @@ public class AuthController {
     @PostMapping("/register")
     public ApiResponse<RegisterResponse> register(@RequestBody @Valid RegisterRequest request,
                                                     HttpServletResponse response) {
-        AuthService.RegisterOutcome outcome = authService.register(request.signupToken(), request.nickname());
+        AuthService.RegisterOutcome outcome = authService.register(
+                request.signupToken(), request.nickname(), request.gender(), request.birthYear());
         tokenService.setRefreshCookie(response, outcome.refreshToken());
         return ApiResponse.success(SuccessMessage.OK.message(), outcome.response());
     }

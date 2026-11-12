@@ -22,6 +22,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -117,11 +118,61 @@ class AuthGoogleFlowTest {
     }
 
     @Test
+    void 가입할_때_성별과_출생연도를_함께_보내면_저장된다() throws Exception {
+        String signupToken = signupTokenFor("profile-code", "profile-sub-1", "profile@example.com");
+
+        MvcResult registerResult = mockMvc.perform(post("/api/auth/register")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "signupToken", signupToken,
+                                "nickname", "틸리",
+                                "gender", "FEMALE",
+                                "birthYear", 2001))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = readField(registerResult, "accessToken");
+
+        mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
+                .andExpect(jsonPath("$.data.gender").value("FEMALE"))
+                .andExpect(jsonPath("$.data.birthYear").value(2001))
+                .andExpect(jsonPath("$.data.level").value(1))
+                .andExpect(jsonPath("$.data.competencies.length()").value(0));
+    }
+
+    @Test
+    void 가입할_때_없는_성별_값이나_범위_밖_출생연도를_보내면_400() throws Exception {
+        String signupToken = signupTokenFor("invalid-code", "invalid-sub-1", "invalid@example.com");
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType("application/json")
+                        .content("{\"signupToken\":\"" + signupToken + "\",\"nickname\":\"틸리\",\"gender\":\"UNKNOWN\"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "signupToken", signupToken, "nickname", "틸리", "birthYear", 1800))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
     void code가_비어있으면_400_BAD_REQUEST() throws Exception {
         mockMvc.perform(post("/api/auth/login/google")
                         .contentType("application/json")
                         .content("{\"code\":\"\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    private String signupTokenFor(String code, String sub, String email) throws Exception {
+        given(googleOidcClient.exchangeCodeForUserInfo(code))
+                .willReturn(new GoogleOidcClient.GoogleUserInfo(sub, email, true));
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login/google")
+                        .contentType("application/json")
+                        .content("{\"code\":\"" + code + "\"}"))
+                .andExpect(jsonPath("$.data.status").value("SIGNUP_REQUIRED"))
+                .andReturn();
+        return readField(loginResult, "signupToken");
     }
 
     @SuppressWarnings("unchecked")

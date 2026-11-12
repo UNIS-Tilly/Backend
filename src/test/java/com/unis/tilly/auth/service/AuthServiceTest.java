@@ -4,6 +4,7 @@ import com.unis.tilly.auth.client.GoogleOidcClient;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.security.JwtProvider;
 import com.unis.tilly.user.entity.User;
+import com.unis.tilly.user.enums.Gender;
 import com.unis.tilly.user.enums.SocialProvider;
 import com.unis.tilly.user.service.UserService;
 import io.jsonwebtoken.Jwts;
@@ -95,11 +96,11 @@ class AuthServiceTest {
         given(jwtProvider.parseSignupToken("signup-token")).willReturn(claims);
 
         User savedUser = userWithId(20L);
-        given(userService.register("signup@example.com", "틸리", SocialProvider.GOOGLE, "sub-4"))
+        given(userService.register("signup@example.com", "틸리", SocialProvider.GOOGLE, "sub-4", Gender.FEMALE, 2001))
                 .willReturn(savedUser);
         given(tokenService.issueTokens(20L)).willReturn(new TokenService.IssuedTokens("access2", "refresh2"));
 
-        AuthService.RegisterOutcome outcome = authService.register("signup-token", "틸리");
+        AuthService.RegisterOutcome outcome = authService.register("signup-token", "틸리", Gender.FEMALE, 2001);
 
         assertThat(outcome.response().accessToken()).isEqualTo("access2");
         assertThat(outcome.response().userId()).isEqualTo(20L);
