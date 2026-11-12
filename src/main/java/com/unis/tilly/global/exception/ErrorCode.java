@@ -27,6 +27,7 @@ public enum ErrorCode {
     // User
     USER_NOT_FOUND(404, "존재하지 않는 사용자입니다."),
     EMAIL_MISMATCH(400, "입력한 이메일이 일치하지 않습니다."),
+    INVALID_COMPETENCY_SELECTION(400, "역량 선택 규칙에 맞지 않습니다."),
 
     // Task
     TASK_NOT_FOUND(404, "존재하지 않는 할 일입니다."),

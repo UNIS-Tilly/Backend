@@ -7,6 +7,7 @@ import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
 import com.unis.tilly.global.security.JwtProvider;
 import com.unis.tilly.user.entity.User;
+import com.unis.tilly.user.enums.Gender;
 import com.unis.tilly.user.enums.SocialProvider;
 import com.unis.tilly.user.service.UserService;
 import io.jsonwebtoken.Claims;
@@ -37,14 +38,15 @@ public class AuthService {
                 .orElseGet(() -> issueSignupToken(userInfo));
     }
 
-    public RegisterOutcome register(String signupToken, String nickname) {
+    // D-97: 인증 흐름·토큰·쿠키는 그대로 두고 선택 필드 gender·birthYear만 함께 저장한다.
+    public RegisterOutcome register(String signupToken, String nickname, Gender gender, Integer birthYear) {
         Claims claims = parseSignupToken(signupToken);
 
         SocialProvider provider = SocialProvider.valueOf(claims.get("provider", String.class));
         String providerUserId = claims.get("providerUserId", String.class);
         String email = claims.get("email", String.class);
 
-        User user = userService.register(email, nickname, provider, providerUserId);
+        User user = userService.register(email, nickname, provider, providerUserId, gender, birthYear);
         TokenService.IssuedTokens tokens = tokenService.issueTokens(user.getId());
 
         return new RegisterOutcome(new RegisterResponse(tokens.accessToken(), user.getId()), tokens.refreshToken());
