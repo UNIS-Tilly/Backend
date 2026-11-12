@@ -8,3 +8,17 @@ google:
   client-id: test-dummy-google-client-id
   client-secret: test-dummy-google-client-secret
   redirect-uri: http://localhost:3000/auth/callback/google
+
+# 테스트는 Gemini에 실제로 호출하지 않는다 (GeminiClient 테스트는 로컬 가짜 HTTP 서버 사용).
+# 아래 값은 기동 검사를 통과하기 위한 더미이며 실제 키·모델과 무관하다.
+ai:
+  gemini:
+    api-key: test-dummy-gemini-key
+    base-url: http://localhost:1
+    model: test-model
+    allowed-models: test-model
+    question-timeout: 2s
+    insight-timeout: 2s
+    max-retries: 2
+    retry-backoff: 1ms
+    validation-retries: 1
