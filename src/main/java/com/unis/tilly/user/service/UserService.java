@@ -32,6 +32,10 @@ public class UserService {
     // TODO(NOTICE-043): 기획 확정 시 교체
     static final int MIN_BIRTH_YEAR = 1950;
 
+    // 성장 레벨 구간 [임시] (D-101, API_SPEC 4.6): 인덱스+1 = 레벨, 값 = 필요한 누적 COMPLETED 일수(이상)
+    // TODO(NOTICE-043): 기획 확정 시 교체
+    static final int[] LEVEL_THRESHOLDS = {0, 1, 3, 7, 14, 30, 60, 100, 150};
+
     private final UserRepository userRepository;
     private final UserCompetencyRepository userCompetencyRepository;
     private final Clock clock;
@@ -70,6 +74,29 @@ public class UserService {
                 .toList());
 
         return new UserProfile(user, sorted(command.competencies()));
+    }
+
+    // 4.6 성장 레벨 (D-101): record 도메인이 날짜가 처음 COMPLETED가 될 때 누적 일수로 호출한다.
+    @Transactional
+    public int raiseLevel(Long userId, long completedDays) {
+        User user = findById(userId);
+        user.raiseLevel(levelFor(completedDays));
+        return user.getLevel();
+    }
+
+    public int getLevel(Long userId) {
+        return findById(userId).getLevel();
+    }
+
+    // 누적 COMPLETED 일수 → 레벨 1~9
+    static int levelFor(long completedDays) {
+        int level = 1;
+        for (int i = 0; i < LEVEL_THRESHOLDS.length; i++) {
+            if (completedDays >= LEVEL_THRESHOLDS[i]) {
+                level = i + 1;
+            }
+        }
+        return level;
     }
 
     // 4.4

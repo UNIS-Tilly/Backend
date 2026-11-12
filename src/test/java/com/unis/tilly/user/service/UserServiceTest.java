@@ -194,6 +194,28 @@ class UserServiceTest {
                 "닉네임", null, 1900, null, null, List.of(COMMUNICATION))));
     }
 
+    // ---- 성장 레벨 (4.6, D-101) ----
+
+    @Test
+    void RC13_누적_완료_일수로_레벨_구간을_계산한다() {
+        assertThat(UserService.levelFor(0)).isEqualTo(1);
+        assertThat(UserService.levelFor(1)).isEqualTo(2);
+        assertThat(UserService.levelFor(2)).isEqualTo(2);
+        assertThat(UserService.levelFor(3)).isEqualTo(3);
+        assertThat(UserService.levelFor(149)).isEqualTo(8);
+        assertThat(UserService.levelFor(150)).isEqualTo(9);
+        assertThat(UserService.levelFor(1000)).isEqualTo(9);
+    }
+
+    @Test
+    void RC13_레벨은_올라가기만_하고_내려가지_않는다() {
+        User user = givenUser();
+
+        assertThat(userService.raiseLevel(1L, 7)).isEqualTo(4);
+        assertThat(userService.raiseLevel(1L, 1)).isEqualTo(4);
+        assertThat(user.getLevel()).isEqualTo(4);
+    }
+
     // ---- 퇴근 시간 (4.4) ----
 
     @Test
