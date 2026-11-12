@@ -112,7 +112,7 @@ class UserFlowTest {
         String accessToken = registerAndGetAccessToken(uniqueEmail(), "원래닉네임");
 
         putProfile(accessToken, """
-                {"nickname":"바꾼닉네임","gender":"FEMALE","birthYear":2001,
+                {"nickname":"바꾼닉네임","gender":"FEMALE","age":25,
                  "currentJobGroup":"IT_DEVELOPMENT","targetJobGroup":"DESIGN",
                  "competencies":["DSN_COMMUNICATION","PARTNERSHIP","DSN_TOOL"]}""")
                 .andExpect(status().isOk())
@@ -122,7 +122,7 @@ class UserFlowTest {
         mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(jsonPath("$.data.nickname").value("바꾼닉네임"))
                 .andExpect(jsonPath("$.data.gender").value("FEMALE"))
-                .andExpect(jsonPath("$.data.birthYear").value(2001))
+                .andExpect(jsonPath("$.data.age").value(25))
                 .andExpect(jsonPath("$.data.currentJobGroup").value("IT_DEVELOPMENT"))
                 .andExpect(jsonPath("$.data.targetJobGroup").value("DESIGN"))
                 .andExpect(jsonPath("$.data.competencies.length()").value(3))

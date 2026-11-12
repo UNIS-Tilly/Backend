@@ -15,9 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
 import java.time.LocalTime;
-import java.time.Year;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -28,9 +26,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class UserService {
 
-    // 출생연도 하한 [임시] (API_SPEC 4.2). 상한은 올해(Clock 기준)
+    // 나이 범위 [임시] (API_SPEC 4.2, 2026-11-12 사용자 결정 14~100)
     // TODO(NOTICE-043): 기획 확정 시 교체
-    static final int MIN_BIRTH_YEAR = 1950;
+    static final int MIN_AGE = 14;
+    static final int MAX_AGE = 100;
 
     // 성장 레벨 구간 [임시] (D-101, API_SPEC 4.6): 인덱스+1 = 레벨, 값 = 필요한 누적 COMPLETED 일수(이상)
     // TODO(NOTICE-043): 기획 확정 시 교체
@@ -38,17 +37,16 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserCompetencyRepository userCompetencyRepository;
-    private final Clock clock;
 
     public Optional<User> findByProvider(SocialProvider provider, String providerUserId) {
         return userRepository.findByProviderAndProviderUserId(provider, providerUserId);
     }
 
-    // 3.2 가입: 닉네임 + 선택 gender·birthYear (D-97). 직군·역량은 가입 직후 PUT /users/me/profile로 입력
+    // 3.2 가입: 닉네임 + 선택 gender·age (D-97). 직군·역량은 가입 직후 PUT /users/me/profile로 입력
     public User register(String email, String nickname, SocialProvider provider, String providerUserId,
-                         Gender gender, Integer birthYear) {
-        validateBirthYear(birthYear);
-        User user = new User(email, nickname, provider, providerUserId, gender, birthYear);
+                         Gender gender, Integer age) {
+        validateAge(age);
+        User user = new User(email, nickname, provider, providerUserId, gender, age);
         return userRepository.save(user);
     }
 
@@ -61,11 +59,11 @@ public class UserService {
     // 4.2 프로필 전체 교체 (D-98, D-100)
     @Transactional
     public UserProfile updateProfile(Long userId, ProfileCommand command) {
-        validateBirthYear(command.birthYear());
+        validateAge(command.age());
         validateCompetencies(command.targetJobGroup(), command.competencies());
 
         User user = findById(userId);
-        user.changeProfile(command.nickname(), command.gender(), command.birthYear(),
+        user.changeProfile(command.nickname(), command.gender(), command.age(),
                 command.currentJobGroup(), command.targetJobGroup());
 
         userCompetencyRepository.deleteAllByUserIdInBulk(userId);
@@ -117,14 +115,12 @@ public class UserService {
         userRepository.delete(user);
     }
 
-    private void validateBirthYear(Integer birthYear) {
-        if (birthYear == null) {
+    private void validateAge(Integer age) {
+        if (age == null) {
             return;
         }
-        int currentYear = Year.now(clock).getValue();
-        if (birthYear < MIN_BIRTH_YEAR || birthYear > currentYear) {
-            throw new CustomException(ErrorCode.BAD_REQUEST,
-                    "출생연도는 " + MIN_BIRTH_YEAR + "~" + currentYear + " 사이여야 합니다.");
+        if (age < MIN_AGE || age > MAX_AGE) {
+            throw new CustomException(ErrorCode.BAD_REQUEST, "나이는 " + MIN_AGE + "~" + MAX_AGE + " 사이여야 합니다.");
         }
     }
 
@@ -181,7 +177,7 @@ public class UserService {
     }
 
     // 4.2 요청 값 (역량 목록은 null이면 빈 목록으로 다룬다)
-    public record ProfileCommand(String nickname, Gender gender, Integer birthYear,
+    public record ProfileCommand(String nickname, Gender gender, Integer age,
                                  JobGroup currentJobGroup, JobGroup targetJobGroup, List<Competency> competencies) {
         public ProfileCommand {
             competencies = competencies == null ? List.of() : competencies;

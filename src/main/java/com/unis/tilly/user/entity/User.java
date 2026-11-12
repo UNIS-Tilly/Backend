@@ -44,8 +44,8 @@ public class User extends BaseEntity {
     @Column(length = 20)
     private Gender gender;
 
-    @Column(name = "birth_year")
-    private Integer birthYear;
+    // 입력받은 나이를 그대로 저장한다(해가 바뀌어도 자동으로 늘지 않음)
+    private Integer age;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "current_job_group", length = 30)
@@ -71,22 +71,22 @@ public class User extends BaseEntity {
     }
 
     public User(String email, String nickname, SocialProvider provider, String providerUserId,
-                Gender gender, Integer birthYear) {
+                Gender gender, Integer age) {
         this.email = email;
         this.nickname = nickname;
         this.provider = provider;
         this.providerUserId = providerUserId;
         this.gender = gender;
-        this.birthYear = birthYear;
+        this.age = age;
         this.level = INITIAL_LEVEL;
     }
 
     // 4.2 프로필 전체 교체 (역량은 user_competencies에서 따로 교체)
-    public void changeProfile(String nickname, Gender gender, Integer birthYear,
+    public void changeProfile(String nickname, Gender gender, Integer age,
                               JobGroup currentJobGroup, JobGroup targetJobGroup) {
         this.nickname = nickname;
         this.gender = gender;
-        this.birthYear = birthYear;
+        this.age = age;
         this.currentJobGroup = currentJobGroup;
         this.targetJobGroup = targetJobGroup;
     }

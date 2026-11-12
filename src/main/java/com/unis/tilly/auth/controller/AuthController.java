@@ -50,7 +50,7 @@ public class AuthController {
     public ApiResponse<RegisterResponse> register(@RequestBody @Valid RegisterRequest request,
                                                     HttpServletResponse response) {
         AuthService.RegisterOutcome outcome = authService.register(
-                request.signupToken(), request.nickname(), request.gender(), request.birthYear());
+                request.signupToken(), request.nickname(), request.gender(), request.age());
         tokenService.setRefreshCookie(response, outcome.refreshToken());
         return ApiResponse.success(SuccessMessage.OK.message(), outcome.response());
     }
