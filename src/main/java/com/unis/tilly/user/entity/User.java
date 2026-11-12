@@ -91,6 +91,13 @@ public class User extends BaseEntity {
         this.targetJobGroup = targetJobGroup;
     }
 
+    // D-101: 레벨은 내려가지 않는다
+    public void raiseLevel(int newLevel) {
+        if (newLevel > level) {
+            this.level = newLevel;
+        }
+    }
+
     public void changeWorkEndTime(LocalTime workEndTime) {
         this.workEndTime = workEndTime;
     }

@@ -68,6 +68,11 @@ public class Task extends BaseEntity {
         this.dueDate = dueDate;
     }
 
+    // D-106: 메모는 기록 임시저장·완료로만 바뀐다. 빈 메모는 null로 저장
+    public void changeMemo(String memo) {
+        this.memo = memo;
+    }
+
     // 이미 완료된 할 일에 완료를 다시 보내면 최초 완료일을 유지한다.
     public void complete(LocalDate today) {
         if (!completed) {

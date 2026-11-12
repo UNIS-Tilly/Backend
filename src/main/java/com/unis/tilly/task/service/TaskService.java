@@ -12,8 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 // 5.1~5.5, HM-02~08, RC-03 (D-102~D-106)
 // 기록 잠금(API_SPEC 1.5, 409 RECORD_LOCKED)은 insight 도메인이 아직 없어 이번 단위에는 적용하지 않는다.
@@ -36,6 +40,34 @@ public class TaskService {
         List<Task> completed = taskRepository.findAllByUserIdAndCompletedDateOrderByIdAsc(userId, day);
         List<Task> incomplete = taskRepository.findAllIncompleteVisibleOn(userId, day, day.plusDays(1).atStartOfDay());
         return new DailyTasks(day, completed, incomplete);
+    }
+
+    // 다른 도메인(record)용: 그날 보이는 할 일 전체 (완료 + 미완료, 5.1 규칙)
+    public List<Task> getVisibleTasks(Long userId, LocalDate day) {
+        List<Task> visible = new ArrayList<>(taskRepository.findAllByUserIdAndCompletedDateOrderByIdAsc(userId, day));
+        visible.addAll(taskRepository.findAllIncompleteVisibleOn(userId, day, day.plusDays(1).atStartOfDay()));
+        return visible;
+    }
+
+    // 6.1 memoCount: 그날 보이는 할 일 중 메모가 있는 개수
+    public int countMemosOn(Long userId, LocalDate day) {
+        return (int) getVisibleTasks(userId, day).stream().filter(task -> task.getMemo() != null).count();
+    }
+
+    // 6.3, 6.4 메모 전체 교체 (D-20, Q-12 ⑤): 범위는 그날 보이는 할 일.
+    // memos에 없는 보이는 할 일의 메모는 지우고, 보이지 않는 할 일의 메모는 건드리지 않는다.
+    // 그날 보이지 않는 할 일(다른 날짜·다른 사용자 포함)의 ID가 오면 404 TASK_NOT_FOUND
+    @Transactional
+    public void replaceMemosOn(Long userId, LocalDate day, Map<Long, String> memos) {
+        List<Task> visible = getVisibleTasks(userId, day);
+        Set<Long> visibleIds = visible.stream().map(Task::getId).collect(Collectors.toSet());
+        if (!visibleIds.containsAll(memos.keySet())) {
+            throw new CustomException(ErrorCode.TASK_NOT_FOUND);
+        }
+        for (Task task : visible) {
+            String memo = memos.get(task.getId());
+            task.changeMemo(memo == null || memo.isBlank() ? null : memo);
+        }
     }
 
     // HM-05
