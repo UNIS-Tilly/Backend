@@ -1,0 +1,10 @@
+# 테스트 전용 값. 실제 운영 비밀값이 아니며 실제 서명 키와 무관하다.
+jwt:
+  secret: test-only-jwt-signing-key-not-for-production-use-0123456789
+
+# 테스트는 구글에 실제로 호출하지 않는다 (GoogleOidcClient를 호출하는 테스트는 MockRestServiceServer로 대체).
+# 아래 값은 그냥 빈 칸이면 안 되니 채우는 더미이며 실제 구글 계정과 무관하다.
+google:
+  client-id: test-dummy-google-client-id
+  client-secret: test-dummy-google-client-secret
+  redirect-uri: http://localhost:3000/auth/callback/google
