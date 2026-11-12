@@ -30,7 +30,7 @@ public enum ErrorCode {
 
     // Task
     TASK_NOT_FOUND(404, "존재하지 않는 할 일입니다."),
-    TASK_LIMIT_EXCEEDED(400, "하루에 추가할 수 있는 할 일 개수를 초과했습니다."),
+    TASK_LIMIT_EXCEEDED(400, "하루에 보이는 할 일은 20개를 넘을 수 없습니다."),
 
     // Record
     QUESTION_NOT_FOUND(404, "존재하지 않는 질문입니다."),
