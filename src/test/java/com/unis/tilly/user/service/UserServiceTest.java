@@ -27,11 +27,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import static com.unis.tilly.user.enums.Competency.COLLABORATION;
-import static com.unis.tilly.user.enums.Competency.COMMUNICATION;
-import static com.unis.tilly.user.enums.Competency.DEV_DEBUGGING;
-import static com.unis.tilly.user.enums.Competency.DSN_PROTOTYPING;
-import static com.unis.tilly.user.enums.Competency.DSN_UX;
+import static com.unis.tilly.user.enums.Competency.RESILIENCE;
+import static com.unis.tilly.user.enums.Competency.PARTNERSHIP;
+import static com.unis.tilly.user.enums.Competency.DEV_PROBLEM_SOLVING;
+import static com.unis.tilly.user.enums.Competency.DSN_TOOL;
+import static com.unis.tilly.user.enums.Competency.DSN_COMMUNICATION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -104,11 +104,11 @@ class UserServiceTest {
     void ST01_역량을_선언_순서로_정렬해_돌려준다() {
         givenUser();
         given(userCompetencyRepository.findAllByUserId(1L)).willReturn(List.of(
-                new UserCompetency(1L, DSN_UX), new UserCompetency(1L, COMMUNICATION)));
+                new UserCompetency(1L, DSN_COMMUNICATION), new UserCompetency(1L, PARTNERSHIP)));
 
         UserService.UserProfile profile = userService.getProfile(1L);
 
-        assertThat(profile.competencies()).containsExactly(COMMUNICATION, DSN_UX);
+        assertThat(profile.competencies()).containsExactly(PARTNERSHIP, DSN_COMMUNICATION);
         assertThat(profile.user().getLevel()).isEqualTo(1);
     }
 
@@ -119,14 +119,14 @@ class UserServiceTest {
         User user = givenUser();
 
         UserService.UserProfile profile = userService.updateProfile(1L, command(
-                "새닉네임", JobGroup.DESIGN, DSN_UX, COMMUNICATION, DSN_PROTOTYPING));
+                "새닉네임", JobGroup.DESIGN, DSN_COMMUNICATION, PARTNERSHIP, DSN_TOOL));
 
         assertThat(user.getNickname()).isEqualTo("새닉네임");
         assertThat(user.getGender()).isEqualTo(Gender.FEMALE);
         assertThat(user.getBirthYear()).isEqualTo(2001);
-        assertThat(user.getCurrentJobGroup()).isEqualTo(JobGroup.DEVELOPMENT);
+        assertThat(user.getCurrentJobGroup()).isEqualTo(JobGroup.IT_DEVELOPMENT);
         assertThat(user.getTargetJobGroup()).isEqualTo(JobGroup.DESIGN);
-        assertThat(profile.competencies()).containsExactly(COMMUNICATION, DSN_UX, DSN_PROTOTYPING);
+        assertThat(profile.competencies()).containsExactly(PARTNERSHIP, DSN_COMMUNICATION, DSN_TOOL);
         verify(userCompetencyRepository).deleteAllByUserIdInBulk(1L);
         verify(userCompetencyRepository).saveAll(anyList());
     }
@@ -135,7 +135,7 @@ class UserServiceTest {
     void 희망_직군이_없으면_공통_역량만으로_저장된다() {
         User user = givenUser();
 
-        userService.updateProfile(1L, command("새닉네임", null, COMMUNICATION));
+        userService.updateProfile(1L, command("새닉네임", null, PARTNERSHIP));
 
         assertThat(user.getTargetJobGroup()).isNull();
     }
@@ -143,10 +143,10 @@ class UserServiceTest {
     @Test
     void 선택_항목을_null로_보내면_해제된다() {
         User user = givenUser();
-        user.changeProfile("닉네임", Gender.MALE, 1999, JobGroup.DATA, JobGroup.DATA);
+        user.changeProfile("닉네임", Gender.MALE, 1999, JobGroup.RND, JobGroup.RND);
 
         userService.updateProfile(1L, new UserService.ProfileCommand(
-                "닉네임", null, null, null, null, List.of(COMMUNICATION)));
+                "닉네임", null, null, null, null, List.of(PARTNERSHIP)));
 
         assertThat(user.getGender()).isNull();
         assertThat(user.getBirthYear()).isNull();
@@ -156,33 +156,33 @@ class UserServiceTest {
 
     @Test
     void 공통_역량이_없으면_INVALID_COMPETENCY_SELECTION() {
-        assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, DSN_UX, DSN_PROTOTYPING));
+        assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, DSN_COMMUNICATION, DSN_TOOL));
         assertInvalidCompetency(new UserService.ProfileCommand("닉네임", null, null, null, null, null));
     }
 
     @Test
     void 희망_직군_역량이_2개_미만이면_INVALID_COMPETENCY_SELECTION() {
-        assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, COMMUNICATION, DSN_UX));
+        assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, PARTNERSHIP, DSN_COMMUNICATION));
     }
 
     @Test
     void 희망_직군이_아닌_직군_역량을_고르면_INVALID_COMPETENCY_SELECTION() {
-        assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, COMMUNICATION, DSN_UX, DSN_PROTOTYPING, DEV_DEBUGGING));
+        assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, PARTNERSHIP, DSN_COMMUNICATION, DSN_TOOL, DEV_PROBLEM_SOLVING));
     }
 
     @Test
     void 희망_직군_없이_직군_역량을_고르면_INVALID_COMPETENCY_SELECTION() {
-        assertInvalidCompetency(command("닉네임", null, COMMUNICATION, DSN_UX));
+        assertInvalidCompetency(command("닉네임", null, PARTNERSHIP, DSN_COMMUNICATION));
     }
 
     @Test
     void 같은_역량을_중복해서_고르면_INVALID_COMPETENCY_SELECTION() {
-        assertInvalidCompetency(command("닉네임", null, COMMUNICATION, COLLABORATION, COMMUNICATION));
+        assertInvalidCompetency(command("닉네임", null, PARTNERSHIP, RESILIENCE, PARTNERSHIP));
     }
 
     @Test
     void 역량_목록에_null이_있으면_400() {
-        List<Competency> competencies = new ArrayList<>(Arrays.asList(COMMUNICATION, null));
+        List<Competency> competencies = new ArrayList<>(Arrays.asList(PARTNERSHIP, null));
 
         assertBadRequest(() -> userService.updateProfile(1L, new UserService.ProfileCommand(
                 "닉네임", null, null, null, null, competencies)));
@@ -191,7 +191,7 @@ class UserServiceTest {
     @Test
     void 프로필의_출생연도가_범위를_벗어나면_400() {
         assertBadRequest(() -> userService.updateProfile(1L, new UserService.ProfileCommand(
-                "닉네임", null, 1900, null, null, List.of(COMMUNICATION))));
+                "닉네임", null, 1900, null, null, List.of(PARTNERSHIP))));
     }
 
     // ---- 성장 레벨 (4.6, D-101) ----
@@ -251,7 +251,7 @@ class UserServiceTest {
     }
 
     private UserService.ProfileCommand command(String nickname, JobGroup target, Competency... competencies) {
-        return new UserService.ProfileCommand(nickname, Gender.FEMALE, 2001, JobGroup.DEVELOPMENT, target,
+        return new UserService.ProfileCommand(nickname, Gender.FEMALE, 2001, JobGroup.IT_DEVELOPMENT, target,
                 List.of(competencies));
     }
 

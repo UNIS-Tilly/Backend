@@ -113,17 +113,17 @@ class UserFlowTest {
 
         putProfile(accessToken, """
                 {"nickname":"바꾼닉네임","gender":"FEMALE","birthYear":2001,
-                 "currentJobGroup":"DEVELOPMENT","targetJobGroup":"DESIGN",
-                 "competencies":["DSN_UX","COMMUNICATION","DSN_PROTOTYPING"]}""")
+                 "currentJobGroup":"IT_DEVELOPMENT","targetJobGroup":"DESIGN",
+                 "competencies":["DSN_COMMUNICATION","PARTNERSHIP","DSN_TOOL"]}""")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.nickname").value("바꾼닉네임"))
-                .andExpect(jsonPath("$.data.competencies[0]").value("COMMUNICATION"));
+                .andExpect(jsonPath("$.data.competencies[0]").value("PARTNERSHIP"));
 
         mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(jsonPath("$.data.nickname").value("바꾼닉네임"))
                 .andExpect(jsonPath("$.data.gender").value("FEMALE"))
                 .andExpect(jsonPath("$.data.birthYear").value(2001))
-                .andExpect(jsonPath("$.data.currentJobGroup").value("DEVELOPMENT"))
+                .andExpect(jsonPath("$.data.currentJobGroup").value("IT_DEVELOPMENT"))
                 .andExpect(jsonPath("$.data.targetJobGroup").value("DESIGN"))
                 .andExpect(jsonPath("$.data.competencies.length()").value(3))
                 .andExpect(jsonPath("$.data.level").value(1));
@@ -134,18 +134,18 @@ class UserFlowTest {
         String accessToken = registerAndGetAccessToken(uniqueEmail(), "닉네임");
         putProfile(accessToken, """
                 {"nickname":"닉네임","targetJobGroup":"DESIGN",
-                 "competencies":["COMMUNICATION","DSN_UX","DSN_PROTOTYPING"]}""")
+                 "competencies":["PARTNERSHIP","DSN_COMMUNICATION","DSN_TOOL"]}""")
                 .andExpect(status().isOk());
 
-        // 같은 역량(COMMUNICATION)을 유지하면서 희망 직군 해제 + 다른 항목 생략 → 해제
-        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"competencies\":[\"COMMUNICATION\",\"COLLABORATION\"]}")
+        // 같은 역량(PARTNERSHIP)을 유지하면서 희망 직군 해제 + 다른 항목 생략 → 해제
+        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"competencies\":[\"PARTNERSHIP\",\"RESILIENCE\"]}")
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(jsonPath("$.data.targetJobGroup").doesNotExist())
                 .andExpect(jsonPath("$.data.competencies.length()").value(2))
-                .andExpect(jsonPath("$.data.competencies[0]").value("COMMUNICATION"))
-                .andExpect(jsonPath("$.data.competencies[1]").value("COLLABORATION"));
+                .andExpect(jsonPath("$.data.competencies[0]").value("PARTNERSHIP"))
+                .andExpect(jsonPath("$.data.competencies[1]").value("RESILIENCE"));
     }
 
     @Test
@@ -154,7 +154,7 @@ class UserFlowTest {
 
         // 희망 직군 역량 1개
         putProfile(accessToken, """
-                {"nickname":"바꾼닉네임","targetJobGroup":"DESIGN","competencies":["COMMUNICATION","DSN_UX"]}""")
+                {"nickname":"바꾼닉네임","targetJobGroup":"DESIGN","competencies":["PARTNERSHIP","DSN_COMMUNICATION"]}""")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("INVALID_COMPETENCY_SELECTION"));
         // 공통 역량 없음
@@ -169,12 +169,12 @@ class UserFlowTest {
     void 프로필_형식_오류는_400_BAD_REQUEST() throws Exception {
         String accessToken = registerAndGetAccessToken(uniqueEmail(), "닉네임");
 
-        putProfile(accessToken, "{\"nickname\":\"a\",\"competencies\":[\"COMMUNICATION\"]}")
+        putProfile(accessToken, "{\"nickname\":\"a\",\"competencies\":[\"PARTNERSHIP\"]}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
         putProfile(accessToken, "{\"nickname\":\"닉네임\",\"competencies\":[\"NO_SUCH_COMPETENCY\"]}")
                 .andExpect(status().isBadRequest());
-        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"targetJobGroup\":\"NO_SUCH\",\"competencies\":[\"COMMUNICATION\"]}")
+        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"targetJobGroup\":\"NO_SUCH\",\"competencies\":[\"PARTNERSHIP\"]}")
                 .andExpect(status().isBadRequest());
     }
 
@@ -201,11 +201,15 @@ class UserFlowTest {
                 .andExpect(jsonPath("$.data.genders.length()").value(3))
                 .andExpect(jsonPath("$.data.genders[0].code").value("MALE"))
                 .andExpect(jsonPath("$.data.genders[0].label").value("남성"))
-                .andExpect(jsonPath("$.data.jobGroups.length()").value(5))
-                .andExpect(jsonPath("$.data.competencies.length()").value(26))
+                .andExpect(jsonPath("$.data.jobGroups.length()").value(13))
+                .andExpect(jsonPath("$.data.competencies.length()").value(77))
                 .andExpect(jsonPath("$.data.competencies[0].type").value("COMMON"))
                 .andExpect(jsonPath("$.data.competencies[0].jobGroup").doesNotExist())
-                .andExpect(jsonPath("$.data.competencies[6].jobGroup").value("DEVELOPMENT"))
+                .andExpect(jsonPath("$.data.competencies[8].jobGroup").doesNotExist())
+                .andExpect(jsonPath("$.data.competencies[9].code").value("MKT_ANALYSIS"))
+                .andExpect(jsonPath("$.data.competencies[9].jobGroup").value("MARKETING"))
+                .andExpect(jsonPath("$.data.competencies[0].label").value("파트너십"))
+                .andExpect(jsonPath("$.data.competencies[0].description").isNotEmpty())
                 .andExpect(jsonPath("$.data.selectionRules.commonMin").value(1))
                 .andExpect(jsonPath("$.data.selectionRules.jobMin").value(2));
     }
@@ -251,7 +255,7 @@ class UserFlowTest {
         String email = uniqueEmail();
         String accessToken = registerAndGetAccessToken(email, "닉네임");
         String sub = lastSub;
-        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"competencies\":[\"COMMUNICATION\"]}")
+        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"competencies\":[\"PARTNERSHIP\"]}")
                 .andExpect(status().isOk());
         Long userId = userRepository.findByProviderAndProviderUserId(SocialProvider.GOOGLE, sub).orElseThrow().getId();
         assertThat(userCompetencyRepository.findAllByUserId(userId)).hasSize(1);
