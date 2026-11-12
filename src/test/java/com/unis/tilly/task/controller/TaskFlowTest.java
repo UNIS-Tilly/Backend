@@ -128,7 +128,7 @@ class TaskFlowTest {
     @Test
     void HM02_배정일이_지난_미완료는_이월되고_마감이_지나면_overdueDays를_준다() throws Exception {
         String token = registerAndGetAccessToken();
-        createTask(token, "지연된 일", "2026-10-15", "2026-10-17");
+        createTask(token, "지연된 일", "2026-10-15", "2026-10-17T18:00");
         createTask(token, "미래 일", "2026-10-25", null);
 
         getTasks(token, "2026-10-21")
@@ -183,11 +183,11 @@ class TaskFlowTest {
     void HM05_배정일과_마감일을_넣어_추가한다() throws Exception {
         String token = registerAndGetAccessToken();
 
-        postTask(token, Map.of("title", "고객 문의 정리", "date", "2026-10-21", "dueDate", "2026-10-23"))
+        postTask(token, Map.of("title", "고객 문의 정리", "date", "2026-10-21", "dueDate", "2026-10-23T18:30"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.title").value("고객 문의 정리"))
                 .andExpect(jsonPath("$.data.date").value("2026-10-21"))
-                .andExpect(jsonPath("$.data.dueDate").value("2026-10-23"))
+                .andExpect(jsonPath("$.data.dueDate").value("2026-10-23T18:30:00"))
                 .andExpect(jsonPath("$.data.completed").value(false));
     }
 
@@ -196,6 +196,19 @@ class TaskFlowTest {
         String token = registerAndGetAccessToken();
 
         postTask(token, Map.of("title", "   ")).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void HM05_마감을_날짜만_보내면_400이고_목록에는_초까지_내려준다() throws Exception {
+        String token = registerAndGetAccessToken();
+
+        postTask(token, Map.of("title", "날짜만 마감", "dueDate", "2026-10-23")).andExpect(status().isBadRequest());
+
+        createTask(token, "시각 마감", "2026-10-21", "2026-10-21T09:05");
+        getTasks(token, "2026-10-21")
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.incomplete[0].dueDate").value("2026-10-21T09:05:00"))
+                .andExpect(jsonPath("$.data.incomplete[0].overdueDays").doesNotExist());
     }
 
     @Test
@@ -239,19 +252,19 @@ class TaskFlowTest {
     @Test
     void HM07_생략한_필드는_유지되고_null을_보내면_해제된다() throws Exception {
         String token = registerAndGetAccessToken();
-        Long taskId = createTask(token, "제목", "2026-10-21", "2026-10-23");
+        Long taskId = createTask(token, "제목", "2026-10-21", "2026-10-23T09:00");
 
         patchTask(token, taskId, "{\"title\":\"새 제목\"}")
                 .andExpect(jsonPath("$.data.date").value("2026-10-21"))
-                .andExpect(jsonPath("$.data.dueDate").value("2026-10-23"));
+                .andExpect(jsonPath("$.data.dueDate").value("2026-10-23T09:00:00"));
 
         patchTask(token, taskId, "{\"dueDate\":null}")
                 .andExpect(jsonPath("$.data.date").value("2026-10-21"))
                 .andExpect(jsonPath("$.data.dueDate").doesNotExist());
 
-        patchTask(token, taskId, "{\"date\":null,\"dueDate\":\"2026-10-30\"}")
+        patchTask(token, taskId, "{\"date\":null,\"dueDate\":\"2026-10-30T23:59\"}")
                 .andExpect(jsonPath("$.data.date").doesNotExist())
-                .andExpect(jsonPath("$.data.dueDate").value("2026-10-30"));
+                .andExpect(jsonPath("$.data.dueDate").value("2026-10-30T23:59:00"));
     }
 
     @Test

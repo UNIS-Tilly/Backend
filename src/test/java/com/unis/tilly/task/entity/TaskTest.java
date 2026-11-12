@@ -15,20 +15,27 @@ class TaskTest {
 
     @Test
     void HM02_마감일이_지난_미완료는_지난_일수를_돌려준다() {
-        Task task = task(LocalDate.of(2026, 10, 15), LocalDate.of(2026, 10, 17));
+        Task task = task(LocalDate.of(2026, 10, 15), LocalDateTime.of(2026, 10, 17, 18, 0));
 
         assertThat(task.overdueDaysOn(D)).isEqualTo(4);
     }
 
     @Test
     void HM02_마감일_당일이나_마감일이_없으면_지연이_아니다() {
-        assertThat(task(D, D).overdueDaysOn(D)).isNull();
+        assertThat(task(D, D.atTime(18, 0)).overdueDaysOn(D)).isNull();
         assertThat(task(D, null).overdueDaysOn(D)).isNull();
     }
 
     @Test
+    void HM02_지연은_마감_시각이_아니라_마감_날짜_기준으로_센다() {
+        // 마감 시각(00:00)이 지난 당일은 지연이 아니고, 다음 날 23:59 마감도 다음 날에는 지연이 아니다
+        assertThat(task(D, D.atStartOfDay()).overdueDaysOn(D)).isNull();
+        assertThat(task(D, D.atTime(23, 59)).overdueDaysOn(D.plusDays(1))).isEqualTo(1);
+    }
+
+    @Test
     void HM02_조회일에_이미_완료했으면_지연이_아니고_그_뒤에_완료했으면_그날은_지연이다() {
-        Task task = task(LocalDate.of(2026, 10, 15), LocalDate.of(2026, 10, 17));
+        Task task = task(LocalDate.of(2026, 10, 15), LocalDateTime.of(2026, 10, 17, 18, 0));
         task.complete(LocalDate.of(2026, 10, 20));
 
         assertThat(task.overdueDaysOn(D)).isNull();
@@ -78,7 +85,7 @@ class TaskTest {
         assertThat(task.getCompletedDate()).isNull();
     }
 
-    private Task task(LocalDate date, LocalDate dueDate) {
+    private Task task(LocalDate date, LocalDateTime dueDate) {
         return new Task(1L, "제목", date, dueDate);
     }
 }

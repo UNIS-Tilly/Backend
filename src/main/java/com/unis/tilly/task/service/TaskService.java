@@ -11,7 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +34,9 @@ public class TaskService {
     // 하루에 보이는 할 일(완료 + 미완료) 최대 개수 (사용자 결정 2026-11-12)
     static final int DAILY_VISIBLE_LIMIT = 20;
     private static final int TITLE_MAX_LENGTH = 20;
+    // 마감 일시 입력: 시간 필수, 초는 생략 가능(받으면 분 단위로 버림). 오프셋 없이 Asia/Seoul 기준
+    private static final DateTimeFormatter DUE_DATE_INPUT =
+            DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm[:ss]").withResolverStyle(ResolverStyle.STRICT);
 
     private final TaskRepository taskRepository;
     private final Clock clock;
@@ -75,7 +82,7 @@ public class TaskService {
     public Task createTask(Long userId, String rawTitle, String dateText, String dueDateText) {
         String title = validateTitle(rawTitle);
         LocalDate date = parseNullableDate(dateText);
-        LocalDate dueDate = parseNullableDate(dueDateText);
+        LocalDateTime dueDate = parseNullableDueDate(dueDateText);
 
         // 새 할 일이 처음 보이는 날(배정일, 없으면 오늘)의 목록이 이미 가득 찼으면 거절한다.
         if (countVisibleOn(userId, firstVisibleDay(date)) >= DAILY_VISIBLE_LIMIT) {
@@ -94,7 +101,7 @@ public class TaskService {
             task.changeTitle(validateTitle(request.title()));
         }
         if (request.dueDateSent()) {
-            task.changeDueDate(parseNullableDate(request.dueDate()));
+            task.changeDueDate(parseNullableDueDate(request.dueDate()));
         }
         if (request.completed() != null) {
             if (request.completed()) {
@@ -163,6 +170,17 @@ public class TaskService {
             return LocalDate.parse(dateText);
         } catch (DateTimeParseException e) {
             throw new CustomException(ErrorCode.BAD_REQUEST, "날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)");
+        }
+    }
+
+    private LocalDateTime parseNullableDueDate(String text) {
+        if (text == null) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(text, DUE_DATE_INPUT).truncatedTo(ChronoUnit.MINUTES);
+        } catch (DateTimeParseException e) {
+            throw new CustomException(ErrorCode.BAD_REQUEST, "마감 일시 형식이 올바르지 않습니다. (YYYY-MM-DDTHH:mm)");
         }
     }
 

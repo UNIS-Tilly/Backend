@@ -12,6 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
 // 5.0 할 일 모델 (D-102~D-106)
@@ -34,9 +35,9 @@ public class Task extends BaseEntity {
     // 배정일. null이면 미완료인 동안 생성일부터 항상 노출된다.
     private LocalDate date;
 
-    // 마감일. 노출 여부에는 영향이 없고 지연 일수 계산에만 쓴다.
+    // 마감 일시(분 단위, Asia/Seoul). 노출 여부에는 영향이 없고 표시와 지연 일수 계산에만 쓴다.
     @Column(name = "due_date")
-    private LocalDate dueDate;
+    private LocalDateTime dueDate;
 
     @Column(nullable = false)
     private boolean completed;
@@ -48,7 +49,7 @@ public class Task extends BaseEntity {
     @Column(length = 500)
     private String memo;
 
-    public Task(Long userId, String title, LocalDate date, LocalDate dueDate) {
+    public Task(Long userId, String title, LocalDate date, LocalDateTime dueDate) {
         this.userId = userId;
         this.title = title;
         this.date = date;
@@ -64,7 +65,7 @@ public class Task extends BaseEntity {
         this.date = date;
     }
 
-    public void changeDueDate(LocalDate dueDate) {
+    public void changeDueDate(LocalDateTime dueDate) {
         this.dueDate = dueDate;
     }
 
@@ -103,11 +104,16 @@ public class Task extends BaseEntity {
         return !visibleFrom.isAfter(day);
     }
 
-    // D-104: 마감일이 지났는데 day 시점에 끝나지 않았으면 지난 일수, 아니면 null
+    // D-104: 마감 날짜가 지났는데 day 시점에 끝나지 않았으면 지난 일수, 아니면 null.
+    // 마감 시각은 표시용이고 지연은 날짜 기준으로 센다(마감 당일은 시각이 지나도 지연 아님, 2026-11-12 사용자 결정).
     public Integer overdueDaysOn(LocalDate day) {
-        if (dueDate == null || !isIncompleteOn(day) || !day.isAfter(dueDate)) {
+        if (dueDate == null || !isIncompleteOn(day)) {
             return null;
         }
-        return (int) ChronoUnit.DAYS.between(dueDate, day);
+        LocalDate dueDay = dueDate.toLocalDate();
+        if (!day.isAfter(dueDay)) {
+            return null;
+        }
+        return (int) ChronoUnit.DAYS.between(dueDay, day);
     }
 }

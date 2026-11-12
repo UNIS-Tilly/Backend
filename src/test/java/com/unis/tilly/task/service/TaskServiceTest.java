@@ -69,11 +69,11 @@ class TaskServiceTest {
         stubVisibleCount(LocalDate.of(2026, 10, 22), 0, 0);
         given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
 
-        Task task = taskService.createTask(1L, "  고객 문의 정리  ", "2026-10-22", "2026-10-25");
+        Task task = taskService.createTask(1L, "  고객 문의 정리  ", "2026-10-22", "2026-10-25T18:30");
 
         assertThat(task.getTitle()).isEqualTo("고객 문의 정리");
         assertThat(task.getDate()).isEqualTo(LocalDate.of(2026, 10, 22));
-        assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 25));
+        assertThat(task.getDueDate()).isEqualTo(LocalDateTime.of(2026, 10, 25, 18, 30));
         assertThat(task.isCompleted()).isFalse();
         assertThat(task.getCompletedDate()).isNull();
     }
@@ -94,9 +94,36 @@ class TaskServiceTest {
         stubVisibleCount(TODAY, 0, 0);
         given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
 
-        Task task = taskService.createTask(1L, "제목", "2026-10-21", "2026-10-19");
+        Task task = taskService.createTask(1L, "제목", "2026-10-21", "2026-10-19T09:00");
 
-        assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 19));
+        assertThat(task.getDueDate()).isEqualTo(LocalDateTime.of(2026, 10, 19, 9, 0));
+    }
+
+    @Test
+    void HM05_마감_일시에_초를_보내면_분_단위로_버려_저장한다() {
+        stubVisibleCount(TODAY, 0, 0);
+        given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        Task task = taskService.createTask(1L, "제목", null, "2026-10-23T18:00:45");
+
+        assertThat(task.getDueDate()).isEqualTo(LocalDateTime.of(2026, 10, 23, 18, 0));
+    }
+
+    @Test
+    void HM05_마감은_시간까지_필수이고_날짜만_보내면_400() {
+        assertBadRequest(() -> taskService.createTask(1L, "제목", null, "2026-10-23"));
+        assertBadRequest(() -> taskService.createTask(1L, "제목", null, "2026-10-23T24:00"));
+        assertBadRequest(() -> taskService.createTask(1L, "제목", null, "2026-02-30T18:00"));
+        assertBadRequest(() -> taskService.createTask(1L, "제목", null, "2026-10-23T18:00+09:00"));
+        assertBadRequest(() -> taskService.createTask(1L, "제목", null, "2026-10-23 18:00"));
+    }
+
+    @Test
+    void HM07_마감을_날짜만으로_수정하면_400이고_값은_그대로다() {
+        Task task = ownedTask(10L, TODAY, LocalDateTime.of(2026, 10, 23, 18, 0));
+
+        assertBadRequest(() -> taskService.updateTask(1L, 10L, request(r -> r.setDueDate("2026-10-24"))));
+        assertThat(task.getDueDate()).isEqualTo(LocalDateTime.of(2026, 10, 23, 18, 0));
     }
 
     @Test
@@ -157,19 +184,19 @@ class TaskServiceTest {
 
     @Test
     void HM07_필드를_생략하면_유지되고_제목만_바뀐다() {
-        Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), LocalDate.of(2026, 10, 20));
+        Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), LocalDateTime.of(2026, 10, 20, 18, 0));
 
         taskService.updateTask(1L, 10L, request(r -> r.setTitle("새제목")));
 
         assertThat(task.getTitle()).isEqualTo("새제목");
         assertThat(task.getDate()).isEqualTo(LocalDate.of(2026, 10, 18));
-        assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 20));
+        assertThat(task.getDueDate()).isEqualTo(LocalDateTime.of(2026, 10, 20, 18, 0));
         assertThat(task.isCompleted()).isFalse();
     }
 
     @Test
     void HM07_배정일과_마감일에_null을_보내면_해제된다() {
-        Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), LocalDate.of(2026, 10, 20));
+        Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), LocalDateTime.of(2026, 10, 20, 18, 0));
         stubVisibleCount(TODAY, 0, 3);
 
         taskService.updateTask(1L, 10L, request(r -> {
@@ -303,7 +330,7 @@ class TaskServiceTest {
                 .willReturn(incomplete);
     }
 
-    private Task ownedTask(Long id, LocalDate date, LocalDate dueDate) {
+    private Task ownedTask(Long id, LocalDate date, LocalDateTime dueDate) {
         Task task = new Task(1L, "원래제목", date, dueDate);
         ReflectionTestUtils.setField(task, "id", id);
         ReflectionTestUtils.setField(task, "createdAt", LocalDateTime.of(2026, 10, 15, 9, 0));
