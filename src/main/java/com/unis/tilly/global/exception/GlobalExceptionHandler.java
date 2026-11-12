@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -45,6 +46,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatchException(MethodArgumentTypeMismatchException e) {
         return ResponseEntity.status(ErrorCode.BAD_REQUEST.getStatus())
                 .body(ApiResponse.fail(ErrorCode.BAD_REQUEST, "요청 파라미터 형식이 올바르지 않습니다."));
+    }
+
+    // 필수 쿼리 파라미터 누락 (예: 아카이브 달력의 year/month)
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParameterException(MissingServletRequestParameterException e) {
+        return ResponseEntity.status(ErrorCode.BAD_REQUEST.getStatus())
+                .body(ApiResponse.fail(ErrorCode.BAD_REQUEST, "필수 요청 파라미터가 없습니다."));
     }
 
     // 일치하는 핸들러가 없는 경로(존재하지 않는 엔드포인트, local 프로파일이 아니라 빈이 없는 개발용 엔드포인트 등).

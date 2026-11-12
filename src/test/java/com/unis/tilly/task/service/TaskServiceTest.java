@@ -251,6 +251,52 @@ class TaskServiceTest {
         verify(taskRepository, never()).delete(any());
     }
 
+    // ---- 메모 (D-106, record 도메인에서 호출) ----
+
+    @Test
+    void RC12_그날_보이는_할_일의_메모를_전체_교체한다() {
+        Task withMemo = visibleTask(10L, "예전 메모");
+        Task other = visibleTask(11L, "지워질 메모");
+        Task blank = visibleTask(12L, null);
+        stubVisibleTasks(List.of(withMemo), List.of(other, blank));
+
+        taskService.replaceMemosOn(1L, TODAY, java.util.Map.of(10L, "새 메모", 12L, "   "));
+
+        assertThat(withMemo.getMemo()).isEqualTo("새 메모");
+        assertThat(other.getMemo()).isNull();   // 보냈던 목록에 없으면 삭제
+        assertThat(blank.getMemo()).isNull();   // 공백은 메모 없음
+    }
+
+    @Test
+    void RC12_그날_보이지_않는_할_일의_메모는_TASK_NOT_FOUND이고_아무것도_바꾸지_않는다() {
+        Task visible = visibleTask(10L, "그대로");
+        stubVisibleTasks(List.of(), List.of(visible));
+
+        assertThatThrownBy(() -> taskService.replaceMemosOn(1L, TODAY, java.util.Map.of(99L, "메모")))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.TASK_NOT_FOUND));
+        assertThat(visible.getMemo()).isEqualTo("그대로");
+    }
+
+    @Test
+    void HM10_메모가_있는_할_일_수를_센다() {
+        stubVisibleTasks(List.of(visibleTask(10L, "메모")), List.of(visibleTask(11L, null), visibleTask(12L, "메모")));
+
+        assertThat(taskService.countMemosOn(1L, TODAY)).isEqualTo(2);
+    }
+
+    private void stubVisibleTasks(List<Task> completed, List<Task> incomplete) {
+        given(taskRepository.findAllByUserIdAndCompletedDateOrderByIdAsc(1L, TODAY)).willReturn(completed);
+        given(taskRepository.findAllIncompleteVisibleOn(1L, TODAY, TODAY.plusDays(1).atStartOfDay())).willReturn(incomplete);
+    }
+
+    private Task visibleTask(Long id, String memo) {
+        Task task = new Task(1L, "제목", TODAY, null);
+        ReflectionTestUtils.setField(task, "id", id);
+        task.changeMemo(memo);
+        return task;
+    }
+
     private void stubVisibleCount(LocalDate day, long completed, long incomplete) {
         given(taskRepository.countByUserIdAndCompletedDate(1L, day)).willReturn(completed);
         given(taskRepository.countIncompleteVisibleOn(eq(1L), eq(day), eq(day.plusDays(1).atStartOfDay())))
