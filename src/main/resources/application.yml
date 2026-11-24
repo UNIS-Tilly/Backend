@@ -64,6 +64,9 @@ app:
   cookie:
     secure: true
     same-site: None
+  cors:
+    # TODO(NOTICE-018): 허용할 프론트 출처를 쉼표로 (.env의 CORS_ALLOWED_ORIGINS). 비우면 어떤 출처도 허용하지 않는다. `*` 불가
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
 
 ---
 spring:
@@ -87,3 +90,6 @@ app:
   cookie:
     secure: false
     same-site: Lax
+  cors:
+    # 로컬 프론트(Vite) 개발 서버. 운영·개발 서버 도메인은 CORS_ALLOWED_ORIGINS로만 넣는다 (NOTICE-018)
+    allowed-origins: http://localhost:5173
