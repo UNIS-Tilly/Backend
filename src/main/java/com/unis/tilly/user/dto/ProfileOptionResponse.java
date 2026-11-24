@@ -19,7 +19,8 @@ public record ProfileOptionResponse(List<Option> genders, List<Option> jobGroups
                 Arrays.stream(Competency.values())
                         .map(c -> new CompetencyOption(c.name(), c.getLabel(), c.getType(), c.getJobGroup(), c.getDescription()))
                         .toList(),
-                new SelectionRules(Competency.COMMON_MIN, Competency.JOB_MIN));
+                new SelectionRules(Competency.COMMON_MIN, Competency.COMMON_MAX,
+                        Competency.JOB_MIN, Competency.JOB_MAX));
     }
 
     public record Option(String code, String label) {
@@ -30,6 +31,6 @@ public record ProfileOptionResponse(List<Option> genders, List<Option> jobGroups
                                    String description) {
     }
 
-    public record SelectionRules(int commonMin, int jobMin) {
+    public record SelectionRules(int commonMin, int commonMax, int jobMin, int jobMax) {
     }
 }

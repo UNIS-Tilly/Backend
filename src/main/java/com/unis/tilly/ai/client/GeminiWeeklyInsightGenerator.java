@@ -60,6 +60,7 @@ public class GeminiWeeklyInsightGenerator implements WeeklyInsightGenerator {
             map.put("date", day.date().toString());
             map.put("tasks", day.tasks());
             map.put("answers", day.answers());
+            map.put("reflection", day.reflection());
             return map;
         }).toList();
         data.put("days", days);

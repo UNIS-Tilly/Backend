@@ -118,7 +118,7 @@ class AuthGoogleFlowTest {
     }
 
     @Test
-    void 가입할_때_성별과_출생연도를_함께_보내면_저장된다() throws Exception {
+    void 가입할_때_성별과_나이를_함께_보내면_저장된다() throws Exception {
         String signupToken = signupTokenFor("profile-code", "profile-sub-1", "profile@example.com");
 
         MvcResult registerResult = mockMvc.perform(post("/api/auth/register")
@@ -127,20 +127,20 @@ class AuthGoogleFlowTest {
                                 "signupToken", signupToken,
                                 "nickname", "틸리",
                                 "gender", "FEMALE",
-                                "birthYear", 2001))))
+                                "age", 25))))
                 .andExpect(status().isOk())
                 .andReturn();
         String accessToken = readField(registerResult, "accessToken");
 
         mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(jsonPath("$.data.gender").value("FEMALE"))
-                .andExpect(jsonPath("$.data.birthYear").value(2001))
+                .andExpect(jsonPath("$.data.age").value(25))
                 .andExpect(jsonPath("$.data.level").value(1))
                 .andExpect(jsonPath("$.data.competencies.length()").value(0));
     }
 
     @Test
-    void 가입할_때_없는_성별_값이나_범위_밖_출생연도를_보내면_400() throws Exception {
+    void 가입할_때_없는_성별_값이나_범위_밖_나이를_보내면_400() throws Exception {
         String signupToken = signupTokenFor("invalid-code", "invalid-sub-1", "invalid@example.com");
 
         mockMvc.perform(post("/api/auth/register")
@@ -151,7 +151,7 @@ class AuthGoogleFlowTest {
         mockMvc.perform(post("/api/auth/register")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "signupToken", signupToken, "nickname", "틸리", "birthYear", 1800))))
+                                "signupToken", signupToken, "nickname", "틸리", "age", 101))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
     }

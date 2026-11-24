@@ -117,10 +117,11 @@ public enum Competency {
     DSN_DATA_ANALYSIS(JobGroup.DESIGN, "데이터분석", "사용자 조사, 사용성 테스트 및 서비스 이용 데이터를 분석해 사용자의 행동과 불편을 파악하고, 디자인 개선 방향을 도출하는 능력"),
     DSN_TOOL(JobGroup.DESIGN, "디자인 툴 사용 역량", "Figma 등 디자인 도구를 활용해 와이어프레임, 프로토타입 및 UI 시안을 제작하고, 컴포넌트와 디자인 시스템을 활용해 일관성 있는 디자인을 구현하는 능력");
 
-    // D-98 선택 규칙: 공통 역량 최소 개수, 희망 직군 선택 시 그 직군 역량 최소 개수
-    // 최대 선택 개수는 [미확정] — 제한 없음 (TODO(NOTICE-043))
+    // D-98, D-144 선택 규칙: 공통 역량 1~3개, 희망 직군 선택 시 그 직군 역량 2~5개
     public static final int COMMON_MIN = 1;
+    public static final int COMMON_MAX = 3;
     public static final int JOB_MIN = 2;
+    public static final int JOB_MAX = 5;
 
     private final String label;
     private final CompetencyType type;

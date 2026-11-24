@@ -18,10 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Clock;
-import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -44,8 +41,6 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-
     @Mock
     private UserRepository userRepository;
     @Mock
@@ -55,38 +50,48 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
-        Clock clock = Clock.fixed(LocalDate.of(2026, 11, 12).atStartOfDay(SEOUL).toInstant(), SEOUL);
-        userService = new UserService(userRepository, userCompetencyRepository, clock);
+        userService = new UserService(userRepository, userCompetencyRepository);
     }
 
     // ---- 가입 (3.2) ----
 
     @Test
-    void 가입_시_성별과_출생연도를_저장하고_레벨은_1이다() {
+    void 가입_시_성별과_나이를_저장하고_레벨은_1이다() {
         given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
 
-        User user = userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", Gender.FEMALE, 2001);
+        User user = userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", Gender.FEMALE, 25);
 
         assertThat(user.getGender()).isEqualTo(Gender.FEMALE);
-        assertThat(user.getBirthYear()).isEqualTo(2001);
+        assertThat(user.getAge()).isEqualTo(25);
         assertThat(user.getLevel()).isEqualTo(1);
     }
 
     @Test
-    void 가입_시_성별과_출생연도는_생략할_수_있다() {
+    void 가입_시_성별과_나이는_생략할_수_있다() {
         given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         User user = userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", null, null);
 
         assertThat(user.getGender()).isNull();
-        assertThat(user.getBirthYear()).isNull();
+        assertThat(user.getAge()).isNull();
     }
 
     @Test
-    void 가입_시_출생연도가_범위를_벗어나면_400이고_저장하지_않는다() {
-        assertBadRequest(() -> userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", null, 1949));
-        assertBadRequest(() -> userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", null, 2027));
+    void 가입_시_나이가_14_100을_벗어나면_400이고_저장하지_않는다() {
+        assertBadRequest(() -> userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", null, 13));
+        assertBadRequest(() -> userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", null, 101));
+        assertBadRequest(() -> userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", null, -1));
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void 가입_시_나이_경계값_14와_100은_저장된다() {
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(userService.register("a@example.com", "틸리", SocialProvider.GOOGLE, "sub", null, 14).getAge())
+                .isEqualTo(14);
+        assertThat(userService.register("b@example.com", "틸리", SocialProvider.GOOGLE, "sub2", null, 100).getAge())
+                .isEqualTo(100);
     }
 
     // ---- 내 정보 (ST-01) ----
@@ -123,7 +128,7 @@ class UserServiceTest {
 
         assertThat(user.getNickname()).isEqualTo("새닉네임");
         assertThat(user.getGender()).isEqualTo(Gender.FEMALE);
-        assertThat(user.getBirthYear()).isEqualTo(2001);
+        assertThat(user.getAge()).isEqualTo(25);
         assertThat(user.getCurrentJobGroup()).isEqualTo(JobGroup.IT_DEVELOPMENT);
         assertThat(user.getTargetJobGroup()).isEqualTo(JobGroup.DESIGN);
         assertThat(profile.competencies()).containsExactly(PARTNERSHIP, DSN_COMMUNICATION, DSN_TOOL);
@@ -149,7 +154,7 @@ class UserServiceTest {
                 "닉네임", null, null, null, null, List.of(PARTNERSHIP)));
 
         assertThat(user.getGender()).isNull();
-        assertThat(user.getBirthYear()).isNull();
+        assertThat(user.getAge()).isNull();
         assertThat(user.getCurrentJobGroup()).isNull();
         assertThat(user.getTargetJobGroup()).isNull();
     }
@@ -163,6 +168,34 @@ class UserServiceTest {
     @Test
     void 희망_직군_역량이_2개_미만이면_INVALID_COMPETENCY_SELECTION() {
         assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, PARTNERSHIP, DSN_COMMUNICATION));
+    }
+
+    @Test
+    void 공통_역량은_최대_3개까지이고_4개면_INVALID_COMPETENCY_SELECTION() {
+        // D-144
+        assertInvalidCompetency(command("닉네임", null,
+                PARTNERSHIP, RESILIENCE, Competency.CUSTOMER_FOCUS, Competency.VISION));
+    }
+
+    @Test
+    void 공통_역량_3개와_직군_역량_5개는_경계값으로_저장된다() {
+        // D-144
+        givenUser();
+
+        UserService.UserProfile profile = userService.updateProfile(1L, command("닉네임", JobGroup.IT_DEVELOPMENT,
+                PARTNERSHIP, RESILIENCE, Competency.CUSTOMER_FOCUS,
+                DEV_PROBLEM_SOLVING, Competency.DEV_PROGRAMMING, Competency.DEV_DATA_ANALYSIS,
+                Competency.DEV_TEAMWORK, Competency.DEV_USER_CENTERED));
+
+        assertThat(profile.competencies()).hasSize(8);
+    }
+
+    @Test
+    void 희망_직군_역량은_최대_5개까지이고_6개면_INVALID_COMPETENCY_SELECTION() {
+        // D-144
+        assertInvalidCompetency(command("닉네임", JobGroup.IT_DEVELOPMENT, PARTNERSHIP,
+                DEV_PROBLEM_SOLVING, Competency.DEV_PROGRAMMING, Competency.DEV_DATA_ANALYSIS,
+                Competency.DEV_TEAMWORK, Competency.DEV_USER_CENTERED, Competency.DEV_CREATIVITY));
     }
 
     @Test
@@ -189,31 +222,32 @@ class UserServiceTest {
     }
 
     @Test
-    void 프로필의_출생연도가_범위를_벗어나면_400() {
+    void 프로필의_나이가_범위를_벗어나면_400() {
         assertBadRequest(() -> userService.updateProfile(1L, new UserService.ProfileCommand(
-                "닉네임", null, 1900, null, null, List.of(PARTNERSHIP))));
+                "닉네임", null, 101, null, null, List.of(PARTNERSHIP))));
     }
 
-    // ---- 성장 레벨 (4.6, D-101) ----
+    // ---- 성장 레벨 (4.6, D-143) ----
 
     @Test
-    void RC13_누적_완료_일수로_레벨_구간을_계산한다() {
+    void RC13_퇴근_완료한_날이_하루_늘_때마다_레벨이_1씩_오르고_9_다음은_1이다() {
         assertThat(UserService.levelFor(0)).isEqualTo(1);
         assertThat(UserService.levelFor(1)).isEqualTo(2);
-        assertThat(UserService.levelFor(2)).isEqualTo(2);
-        assertThat(UserService.levelFor(3)).isEqualTo(3);
-        assertThat(UserService.levelFor(149)).isEqualTo(8);
-        assertThat(UserService.levelFor(150)).isEqualTo(9);
-        assertThat(UserService.levelFor(1000)).isEqualTo(9);
+        assertThat(UserService.levelFor(2)).isEqualTo(3);
+        assertThat(UserService.levelFor(8)).isEqualTo(9);
+        assertThat(UserService.levelFor(9)).isEqualTo(1);   // 순환
+        assertThat(UserService.levelFor(10)).isEqualTo(2);
+        assertThat(UserService.levelFor(17)).isEqualTo(9);
+        assertThat(UserService.levelFor(18)).isEqualTo(1);
     }
 
     @Test
-    void RC13_레벨은_올라가기만_하고_내려가지_않는다() {
+    void RC13_레벨을_누적_일수로_다시_계산해_저장한다() {
         User user = givenUser();
 
-        assertThat(userService.raiseLevel(1L, 7)).isEqualTo(4);
-        assertThat(userService.raiseLevel(1L, 1)).isEqualTo(4);
-        assertThat(user.getLevel()).isEqualTo(4);
+        assertThat(userService.updateLevel(1L, 7)).isEqualTo(8);
+        assertThat(userService.updateLevel(1L, 9)).isEqualTo(1);   // 9 다음은 다시 1
+        assertThat(user.getLevel()).isEqualTo(1);
     }
 
     // ---- 퇴근 시간 (4.4) ----
@@ -251,7 +285,7 @@ class UserServiceTest {
     }
 
     private UserService.ProfileCommand command(String nickname, JobGroup target, Competency... competencies) {
-        return new UserService.ProfileCommand(nickname, Gender.FEMALE, 2001, JobGroup.IT_DEVELOPMENT, target,
+        return new UserService.ProfileCommand(nickname, Gender.FEMALE, 25, JobGroup.IT_DEVELOPMENT, target,
                 List.of(competencies));
     }
 

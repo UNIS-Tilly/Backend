@@ -112,6 +112,7 @@ public class AiResponseValidator {
             case MEMO -> day.tasks().stream().map(AiTaskInput::memo).anyMatch(this::hasText);
             case QUESTION_ANSWER -> day.answers().stream()
                     .map(WeeklyInsightInput.AnswerInput::answer).anyMatch(this::hasText);
+            case REFLECTION -> hasText(day.reflection());
         };
     }
 
