@@ -14,6 +14,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,5 +67,25 @@ class UserRepositoryTest {
         assertThatThrownBy(() ->
                 userRepository.saveAndFlush(new User("b@example.com", "나나", SocialProvider.GOOGLE, "dup-sub")))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    // 6.6 자동 질문: 퇴근 시간이 정확히 일치하는 사용자만, 미설정(null)은 제외
+    @Test
+    void 퇴근_시간이_정확히_일치하는_사용자_ID만_조회한다() {
+        User at18 = withWorkEndTime("a@example.com", "s-a", LocalTime.of(18, 0));
+        User also18 = withWorkEndTime("b@example.com", "s-b", LocalTime.of(18, 0));
+        withWorkEndTime("c@example.com", "s-c", LocalTime.of(18, 1));
+        withWorkEndTime("d@example.com", "s-d", null);
+
+        List<Long> ids = userRepository.findIdsByWorkEndTime(LocalTime.of(18, 0));
+
+        assertThat(ids).containsExactly(at18.getId(), also18.getId());
+        assertThat(userRepository.findIdsByWorkEndTime(LocalTime.of(3, 0))).isEmpty();
+    }
+
+    private User withWorkEndTime(String email, String sub, LocalTime workEndTime) {
+        User user = new User(email, "틸리", SocialProvider.GOOGLE, sub);
+        user.changeWorkEndTime(workEndTime);
+        return userRepository.saveAndFlush(user);
     }
 }

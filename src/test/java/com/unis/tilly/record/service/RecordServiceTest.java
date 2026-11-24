@@ -281,6 +281,156 @@ class RecordServiceTest {
         assertBadRequest(() -> recordService.getReflection(1L, "2026/10/21"));
     }
 
+    // ---- 6.5, 6.6 질문 생성 준비·저장 ----
+
+    @Test
+    void RC06_질문_받기는_입력을_먼저_저장하고_할_일과_회고로_AI_입력을_만든다() {
+        DailyRecord record = record(RecordStatus.NOT_STARTED);
+        given(questionRepository.findAllByRecordIdOrderByOrderAsc(record.getId())).willReturn(List.of());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", true, "구조를 바꿨다")));
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE))
+                .willReturn(Optional.of(new DailyReflection(1L, DATE, "오늘 회고")));
+
+        RecordService.QuestionPreparation prepared = recordService.prepareQuestions(1L, "2026-10-21",
+                new RecordService.RecordContent(List.of(new RecordService.MemoInput(10L, "메모")), List.of(), "오늘 회고"));
+
+        verify(taskService).replaceMemosOn(1L, DATE, Map.of(10L, "메모"));
+        assertThat(prepared.existing()).isEmpty();
+        assertThat(prepared.input().date()).isEqualTo(DATE);
+        assertThat(prepared.input().tasks()).extracting("title", "completed", "memo")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("보고서", true, "구조를 바꿨다"));
+        assertThat(prepared.input().reflection()).isEqualTo("오늘 회고");
+    }
+
+    @Test
+    void RC06_질문이_이미_있으면_AI_입력_없이_기존_질문을_돌려준다() {
+        DailyRecord record = record(RecordStatus.DRAFT);
+        RecordQuestion existing = question(501L, 1, null);
+        given(questionRepository.findAllByRecordIdOrderByOrderAsc(record.getId())).willReturn(List.of(existing));
+
+        RecordService.QuestionPreparation prepared = recordService.prepareQuestions(1L, "2026-10-21", emptyContent());
+
+        assertThat(prepared.existing()).containsExactly(existing);
+        assertThat(prepared.input()).isNull();
+        verify(taskService, never()).getTasksOn(anyLong(), any());   // AI 입력을 만들지 않는다
+    }
+
+    @Test
+    void RC06_회고만_있어도_질문을_만들_수_있다() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of());
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE))
+                .willReturn(Optional.of(new DailyReflection(1L, DATE, "회고만")));
+
+        RecordService.QuestionPreparation prepared = recordService.prepareQuestions(1L, "2026-10-21", reflection("회고만"));
+
+        assertThat(prepared.input().tasks()).isEmpty();
+        assertThat(prepared.input().reflection()).isEqualTo("회고만");
+    }
+
+    @Test
+    void RC06_그날_할_일도_회고도_없으면_RECORD_EMPTY() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of());
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> recordService.prepareQuestions(1L, "2026-10-21", emptyContent()))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.RECORD_EMPTY));
+    }
+
+    @Test
+    void RC06_질문_받기의_날짜_형식이_틀리면_400() {
+        assertBadRequest(() -> recordService.prepareQuestions(1L, "2026/10/21", emptyContent()));
+    }
+
+    @Test
+    void RC06_자동_질문은_할_일이_있으면_입력을_만든다() {
+        DailyRecord record = record(RecordStatus.DRAFT);
+        given(questionRepository.findAllByRecordIdOrderByOrderAsc(record.getId())).willReturn(List.of());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", false, null)));
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+
+        assertThat(recordService.prepareAutoQuestions(1L, DATE)).isPresent();
+    }
+
+    @Test
+    void RC06_자동_질문은_기록_행이_없는_날도_할_일이_있으면_만든다() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", false, null)));
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+
+        assertThat(recordService.prepareAutoQuestions(1L, DATE)).isPresent();
+    }
+
+    @Test
+    void RC06_자동_질문은_이미_COMPLETED인_날은_건너뛴다() {
+        // COMPLETED
+        DailyRecord completed = record(RecordStatus.NOT_STARTED);
+        completed.complete(NOW.minusHours(1));
+
+        assertThat(recordService.prepareAutoQuestions(1L, DATE)).isEmpty();
+        verify(taskService, never()).getTasksOn(anyLong(), any());
+    }
+
+    @Test
+    void RC06_자동_질문은_질문이_이미_있으면_건너뛴다() {
+        DailyRecord record = record(RecordStatus.DRAFT);
+        given(questionRepository.findAllByRecordIdOrderByOrderAsc(record.getId()))
+                .willReturn(List.of(question(501L, 1, null)));
+
+        assertThat(recordService.prepareAutoQuestions(1L, DATE)).isEmpty();
+        verify(taskService, never()).getTasksOn(anyLong(), any());
+    }
+
+    @Test
+    void RC06_자동_질문은_할_일도_회고도_없으면_건너뛴다() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of());
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+
+        assertThat(recordService.prepareAutoQuestions(1L, DATE)).isEmpty();
+    }
+
+    @Test
+    void RC06_질문을_저장하면_기록_행이_없을_때_NOT_STARTED로_만들고_순서를_매긴다() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(recordRepository.save(any(DailyRecord.class))).willAnswer(invocation -> {
+            DailyRecord saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 100L);
+            return saved;
+        });
+        given(questionRepository.save(any(RecordQuestion.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        List<RecordQuestion> saved = recordService.storeQuestions(1L, DATE, List.of("질문1", "질문2"));
+
+        assertThat(saved).extracting(RecordQuestion::getOrder).containsExactly(1, 2);
+        assertThat(saved).extracting(RecordQuestion::getText).containsExactly("질문1", "질문2");
+        assertThat(saved).extracting(RecordQuestion::getRecordId).containsOnly(100L);
+        ArgumentCaptor<DailyRecord> captor = ArgumentCaptor.forClass(DailyRecord.class);
+        verify(recordRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(RecordStatus.NOT_STARTED);   // 상태를 올리지 않는다
+    }
+
+    @Test
+    void RC06_질문은_최대_3개까지만_저장한다() {
+        record(RecordStatus.DRAFT);
+        given(questionRepository.findAllByRecordIdOrderByOrderAsc(100L)).willReturn(List.of());
+        given(questionRepository.save(any(RecordQuestion.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(recordService.storeQuestions(1L, DATE, List.of("1", "2", "3", "4"))).hasSize(3);
+    }
+
+    @Test
+    void RC06_저장_사이에_질문이_생겼으면_새로_만들지_않고_그것을_돌려준다() {
+        DailyRecord record = record(RecordStatus.DRAFT);
+        RecordQuestion existing = question(501L, 1, null);
+        given(questionRepository.findAllByRecordIdOrderByOrderAsc(record.getId())).willReturn(List.of(existing));
+
+        assertThat(recordService.storeQuestions(1L, DATE, List.of("새 질문"))).containsExactly(existing);
+        verify(questionRepository, never()).save(any());
+    }
+
     // ---- 6.4 완료 ----
 
     @Test
@@ -322,6 +472,15 @@ class RecordServiceTest {
         ReflectionTestUtils.setField(question, "id", id);
         question.changeAnswer(answer, false);
         return question;
+    }
+
+    private com.unis.tilly.task.entity.Task task(String title, boolean completed, String memo) {
+        com.unis.tilly.task.entity.Task task = new com.unis.tilly.task.entity.Task(1L, title, DATE, null);
+        if (completed) {
+            task.complete(DATE);
+        }
+        task.changeMemo(memo);
+        return task;
     }
 
     private RecordService.RecordContent memo(Long taskId, String memo) {

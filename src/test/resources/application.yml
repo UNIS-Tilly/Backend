@@ -22,3 +22,8 @@ ai:
     max-retries: 2
     retry-backoff: 1ms
     validation-retries: 1
+
+# 테스트에서는 자동 질문 스케줄러를 켜지 않는다 (스케줄러 로직은 시각을 직접 넘겨 단위 테스트, ShedLock은 별도 통합 테스트).
+record:
+  auto-question:
+    enabled: false

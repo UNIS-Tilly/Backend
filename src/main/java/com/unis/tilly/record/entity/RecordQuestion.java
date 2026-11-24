@@ -11,7 +11,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// 하루 질문(확장 질문)과 답변. 질문 생성은 AI 연동 단계에서 추가한다.
+// 하루 질문(확장 질문)과 답변. 질문은 RecordQuestionService가 만든다 (6.5, 6.6).
 @Entity
 @Table(name = "record_questions")
 @Getter
