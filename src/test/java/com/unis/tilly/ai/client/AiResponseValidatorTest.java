@@ -29,7 +29,10 @@ class AiResponseValidatorTest {
                             List.of(new AiTaskInput("보고서", true, "구조를 바꿨다")), List.of(), "배운 점을 정리했다"),
                     new WeeklyInsightInput.DayInput(LocalDate.of(2026, 10, 22),
                             List.of(new AiTaskInput("회의", false, null)),
-                            List.of(new WeeklyInsightInput.AnswerInput("질문", "답변")), null)));
+                            List.of(new WeeklyInsightInput.AnswerInput("질문", "답변")), null)),
+            new WeeklyInsightInput.Profile("IT_DEVELOPMENT", "IT/개발", List.of(
+                    new WeeklyInsightInput.CompetencyInfo("PARTNERSHIP", "파트너십", "다른 사람의 목표달성을 지원"),
+                    new WeeklyInsightInput.CompetencyInfo("DEV_PROBLEM_SOLVING", "문제 해결 능력", "오류의 원인을 파악해 해결"))));
 
     // ---- 질문 (6.5) ----
 
@@ -64,7 +67,7 @@ class AiResponseValidatorTest {
     @Test
     void IN03_지난_주가_없으면_비교_숫자를_허용하지_않는다() {
         WeeklyInsightInput firstWeek = new WeeklyInsightInput(input.weekStart(), input.weekEnd(), input.weekLabel(),
-                input.stats(), null, false, input.days());
+                input.stats(), null, false, input.days(), input.profile());
 
         assertInvalid(() -> validator.weeklyInsight(json(insight(
                 "완수율이 15%p 올랐어요", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")), firstWeek));
@@ -108,10 +111,77 @@ class AiResponseValidatorTest {
         WeeklyInsightInput blank = new WeeklyInsightInput(input.weekStart(), input.weekEnd(), input.weekLabel(),
                 input.stats(), input.previousWeekStats(), false,
                 List.of(new WeeklyInsightInput.DayInput(LocalDate.of(2026, 10, 21),
-                        List.of(new AiTaskInput("보고서", true, null)), List.of(), "   ")));
+                        List.of(new AiTaskInput("보고서", true, null)), List.of(), "   ")),
+                input.profile());
 
         assertInvalid(() -> validator.weeklyInsight(json(insight(
                 "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"REFLECTION\"}", "행동")), blank));
+    }
+
+    @Test
+    void IN03_강점의_역량_코드와_보완의_STAR_구분을_결과에_담는다() {
+        WeeklyInsightResult result = validator.weeklyInsight(json(insight(
+                "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")), input);
+
+        assertThat(result.strengths().get(0).competencyCode()).isEqualTo("DEV_PROBLEM_SOLVING");
+        assertThat(result.improvements().get(0).starPart()).isEqualTo(com.unis.tilly.ai.enums.AiStarPart.A);
+    }
+
+    @Test
+    void IN03_강점의_역량_코드는_근거가_없으면_null이나_생략이나_빈_값을_허용한다() {
+        String nullCode = insight("제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")
+                .replace("\"competencyCode\":\"DEV_PROBLEM_SOLVING\"", "\"competencyCode\":null");
+        String omitted = insight("제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")
+                .replace("\"competencyCode\":\"DEV_PROBLEM_SOLVING\",", "");
+        String blank = insight("제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")
+                .replace("\"competencyCode\":\"DEV_PROBLEM_SOLVING\"", "\"competencyCode\":\"  \"");
+
+        assertThat(validator.weeklyInsight(json(nullCode), input).strengths().get(0).competencyCode()).isNull();
+        assertThat(validator.weeklyInsight(json(omitted), input).strengths().get(0).competencyCode()).isNull();
+        assertThat(validator.weeklyInsight(json(blank), input).strengths().get(0).competencyCode()).isNull();
+    }
+
+    @Test
+    void IN03_사용자가_선택하지_않은_역량_코드는_실패() {
+        // 존재하는 역량이어도 사용자가 선택하지 않았으면 안 된다 (D-132, D-134)
+        String other = insight("제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")
+                .replace("DEV_PROBLEM_SOLVING", "RESILIENCE");
+        String unknown = insight("제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")
+                .replace("DEV_PROBLEM_SOLVING", "NOT_A_COMPETENCY");
+
+        assertInvalid(() -> validator.weeklyInsight(json(other), input));
+        assertInvalid(() -> validator.weeklyInsight(json(unknown), input));
+    }
+
+    @Test
+    void IN03_프로필이_없으면_역량_코드를_허용하지_않는다() {
+        WeeklyInsightInput noProfile = new WeeklyInsightInput(input.weekStart(), input.weekEnd(), input.weekLabel(),
+                input.stats(), input.previousWeekStats(), false, input.days(), null);
+
+        assertInvalid(() -> validator.weeklyInsight(json(insight(
+                "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")), noProfile));
+    }
+
+    @Test
+    void IN07_STAR_구분이_S_T_A_R이_아니거나_없으면_실패() {
+        String evidence = "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}";
+        assertInvalid(() -> validator.weeklyInsight(json(insight("제목", "소제목", evidence, "행동")
+                .replace("\"starPart\":\"A\"", "\"starPart\":\"X\"")), input));
+        assertInvalid(() -> validator.weeklyInsight(json(insight("제목", "소제목", evidence, "행동")
+                .replace("\"starPart\":\"A\",", "")), input));
+    }
+
+    @Test
+    void IN03_저장_컬럼을_넘는_글자_수는_실패해서_다시_생성한다() {
+        String evidence = "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}";
+        assertInvalid(() -> validator.weeklyInsight(json(insight("가".repeat(256), "소제목", evidence, "행동")), input));
+        assertInvalid(() -> validator.weeklyInsight(json(insight("제목", "가".repeat(256), evidence, "행동")), input));
+        assertInvalid(() -> validator.weeklyInsight(json(insight("제목", "소제목", evidence, "행동")
+                .replace("\"description\":\"설명\"", "\"description\":\"" + "가".repeat(2001) + "\"")), input));
+        assertInvalid(() -> validator.weeklyInsight(json(insight("제목", "소제목", evidence, "행동")
+                .replace("[\"태그\"]", "[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\"]")), input));
+        assertInvalid(() -> validator.weeklyInsight(json(insight("제목", "소제목", evidence, "행동")
+                .replace("[\"태그\"]", "[\"" + "가".repeat(31) + "\"]")), input));
     }
 
     @Test
@@ -128,8 +198,8 @@ class AiResponseValidatorTest {
     private String insight(String title, String subtitle, String evidence, String action) {
         return """
                 {"title":"%s","subtitle":"%s",
-                 "strengths":[{"title":"강점","description":"설명","tags":["태그"],"evidences":[%s]}],
-                 "improvements":[{"title":"보완","description":"설명","evidences":[{"date":"2026-10-22","type":"TASK"}],"action":"%s"}]}
+                 "strengths":[{"title":"강점","description":"설명","competencyCode":"DEV_PROBLEM_SOLVING","tags":["태그"],"evidences":[%s]}],
+                 "improvements":[{"title":"보완","description":"설명","starPart":"A","evidences":[{"date":"2026-10-22","type":"TASK"}],"action":"%s"}]}
                 """.formatted(title, subtitle, evidence, action);
     }
 

@@ -4,6 +4,7 @@ import com.unis.tilly.ai.dto.AiTaskInput;
 import com.unis.tilly.ai.dto.QuestionGenerationInput;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
+import com.unis.tilly.insight.service.InsightLockService;
 import com.unis.tilly.record.entity.DailyRecord;
 import com.unis.tilly.record.entity.DailyReflection;
 import com.unis.tilly.record.entity.RecordQuestion;
@@ -41,6 +42,7 @@ public class RecordService {
     private final DailyReflectionRepository reflectionRepository;
     private final TaskService taskService;
     private final UserService userService;
+    private final InsightLockService insightLockService;
     private final Clock clock;
 
     // 6.1 HM-10, HM-11
@@ -129,6 +131,42 @@ public class RecordService {
     @Transactional(readOnly = true)
     public List<RecordQuestion> findQuestions(Long userId, LocalDate date) {
         return questionsOf(recordRepository.findByUserIdAndDate(userId, date));
+    }
+
+    // 9.2 D-139: 그날 퇴근 완료(COMPLETED)했는지
+    public boolean isCompleted(Long userId, LocalDate date) {
+        return recordRepository.findByUserIdAndDate(userId, date)
+                .map(record -> record.getStatus() == RecordStatus.COMPLETED)
+                .orElse(false);
+    }
+
+    // 9.2 인사이트 입력: 기간 안에서 퇴근 완료한 날의 회고·답변한 질문 (COMPLETED 기록만 반영, API_SPEC 8장 4번).
+    // 회고는 공백뿐이면 없는 것으로, 답변은 비어 있거나 건너뛴 질문을 뺀다
+    @Transactional(readOnly = true)
+    public List<CompletedDay> getCompletedDays(Long userId, LocalDate from, LocalDate to) {
+        List<DailyRecord> records = recordRepository.findAllByUserIdAndDateBetweenAndStatusIn(
+                userId, from, to, java.util.Set.of(RecordStatus.COMPLETED));
+        if (records.isEmpty()) {
+            return List.of();
+        }
+        Map<LocalDate, String> reflections = new HashMap<>();
+        for (DailyReflection reflection : reflectionRepository.findAllByUserIdAndDateBetween(userId, from, to)) {
+            if (hasText(reflection.getContent())) {
+                reflections.put(reflection.getDate(), reflection.getContent());
+            }
+        }
+        Map<Long, List<RecordQuestion>> questionsByRecord = questionRepository
+                .findAllByRecordIdInOrderByRecordIdAscOrderAsc(records.stream().map(DailyRecord::getId).toList())
+                .stream().collect(Collectors.groupingBy(RecordQuestion::getRecordId));
+
+        return records.stream()
+                .sorted(java.util.Comparator.comparing(DailyRecord::getDate))
+                .map(record -> new CompletedDay(record.getDate(), reflections.get(record.getDate()),
+                        questionsByRecord.getOrDefault(record.getId(), List.of()).stream()
+                                .filter(q -> hasText(q.getAnswer()))
+                                .map(q -> new AnsweredQuestion(q.getText(), q.getAnswer()))
+                                .toList()))
+                .toList();
     }
 
     // 6.3 RC-12 임시저장 (D-95)
@@ -240,10 +278,9 @@ public class RecordService {
         }
     }
 
-    // 인사이트 발행 여부에 따른 잠금 (API_SPEC 1.5). insight 도메인이 아직 없어 항상 false.
-    // insight 단위에서 insight 서비스의 잠금 조회로 교체한다 (GENERATING 중 잠금은 NOTICE-023).
+    // 인사이트가 GENERATING·PUBLISHED인 주의 기록·회고는 잠긴다 (API_SPEC 1.5, D-130, D-137)
     boolean isLocked(Long userId, LocalDate date) {
-        return false;
+        return insightLockService.isLocked(userId, date);
     }
 
     private void checkNotLocked(Long userId, LocalDate date) {
@@ -318,6 +355,13 @@ public class RecordService {
 
     // 질문 받기 준비 결과: existing이 비어 있지 않으면 그대로 돌려주고, 아니면 input으로 AI를 호출한다
     public record QuestionPreparation(LocalDate date, List<RecordQuestion> existing, QuestionGenerationInput input) {
+    }
+
+    public record AnsweredQuestion(String question, String answer) {
+    }
+
+    // 퇴근 완료한 날의 인사이트 입력용 기록 (회고는 없으면 null)
+    public record CompletedDay(LocalDate date, String reflection, List<AnsweredQuestion> answers) {
     }
 
     public record DailyReflectionView(LocalDate date, String content) {

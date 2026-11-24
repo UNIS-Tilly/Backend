@@ -5,6 +5,7 @@ import com.unis.tilly.ai.dto.AiTaskInput;
 import com.unis.tilly.ai.dto.WeeklyInsightInput;
 import com.unis.tilly.ai.dto.WeeklyInsightResult;
 import com.unis.tilly.ai.enums.AiEvidenceType;
+import com.unis.tilly.ai.enums.AiStarPart;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -28,6 +29,11 @@ public class AiResponseValidator {
     static final int MIN_ITEMS = 1;
     static final int MAX_ITEMS = 2;          // 강점·보완 각 1~2개 (#18)
     static final int ACTION_MAX_LENGTH = 20; // 추천 행동 = 다음 할 일 제목 (D-57)
+    // 저장 컬럼 크기에서 오는 기술적 상한(제품 규칙 아님): 이를 넘으면 저장 실패 대신 다시 생성한다
+    static final int TITLE_MAX_LENGTH = 255;
+    static final int DESCRIPTION_MAX_LENGTH = 2000;
+    static final int TAG_MAX_LENGTH = 30;
+    static final int TAGS_MAX = 5;
     private static final Pattern NUMBER = Pattern.compile("\\d+");
 
     // 6.5: 질문 1~3개, 빈 문장 불가
@@ -45,8 +51,8 @@ public class AiResponseValidator {
 
     // 9.2: 강점·보완 1~2개, 보완마다 추천 행동 1개(20자 이내), 모든 항목에 실제 존재하는 근거, 제목·소제목 숫자 = 서버 계산값
     public WeeklyInsightResult weeklyInsight(JsonNode root, WeeklyInsightInput input) {
-        String title = requireText(root.path("title"), "제목이 비어 있습니다.");
-        String subtitle = requireText(root.path("subtitle"), "소제목이 비어 있습니다.");
+        String title = requireText(root.path("title"), "제목이 비어 있습니다.", TITLE_MAX_LENGTH);
+        String subtitle = requireText(root.path("subtitle"), "소제목이 비어 있습니다.", TITLE_MAX_LENGTH);
         checkNumbers(title + " " + subtitle, allowedNumbers(input));
 
         Map<LocalDate, WeeklyInsightInput.DayInput> days = input.days().stream()
@@ -56,11 +62,15 @@ public class AiResponseValidator {
         for (JsonNode node : items(root.path("strengths"), "강점")) {
             List<String> tags = new ArrayList<>();
             for (JsonNode tag : node.path("tags")) {
-                tags.add(requireText(tag, "태그가 비어 있습니다."));
+                tags.add(requireText(tag, "태그가 비어 있습니다.", TAG_MAX_LENGTH));
+            }
+            if (tags.size() > TAGS_MAX) {
+                throw new AiResponseInvalidException("태그가 너무 많습니다.");
             }
             strengths.add(new WeeklyInsightResult.Strength(
-                    requireText(node.path("title"), "강점 제목이 비어 있습니다."),
-                    requireText(node.path("description"), "강점 설명이 비어 있습니다."),
+                    requireText(node.path("title"), "강점 제목이 비어 있습니다.", TITLE_MAX_LENGTH),
+                    requireText(node.path("description"), "강점 설명이 비어 있습니다.", DESCRIPTION_MAX_LENGTH),
+                    competencyCode(node.path("competencyCode"), input),
                     tags,
                     evidences(node.path("evidences"), days)));
         }
@@ -72,12 +82,38 @@ public class AiResponseValidator {
                 throw new AiResponseInvalidException("추천 행동이 20자를 넘습니다.");
             }
             improvements.add(new WeeklyInsightResult.Improvement(
-                    requireText(node.path("title"), "보완 제목이 비어 있습니다."),
-                    requireText(node.path("description"), "보완 설명이 비어 있습니다."),
+                    requireText(node.path("title"), "보완 제목이 비어 있습니다.", TITLE_MAX_LENGTH),
+                    requireText(node.path("description"), "보완 설명이 비어 있습니다.", DESCRIPTION_MAX_LENGTH),
+                    starPart(node.path("starPart")),
                     evidences(node.path("evidences"), days),
                     action));
         }
         return new WeeklyInsightResult(title, subtitle, strengths, improvements);
+    }
+
+    // 강점의 역량 코드는 사용자가 선택한 역량 중 하나여야 한다. 근거가 없으면 null·빈 값 (D-132, D-134)
+    private String competencyCode(JsonNode node, WeeklyInsightInput input) {
+        if (node.isMissingNode() || node.isNull() || (node.isTextual() && node.asText().isBlank())) {
+            return null;
+        }
+        if (!node.isTextual()) {
+            throw new AiResponseInvalidException("역량 코드가 올바르지 않습니다.");
+        }
+        String code = node.asText().strip();
+        boolean selected = input.profile() != null && input.profile().competencies().stream()
+                .anyMatch(c -> c.code().equals(code));
+        if (!selected) {
+            throw new AiResponseInvalidException("사용자가 선택하지 않은 역량 코드입니다.");
+        }
+        return code;
+    }
+
+    private AiStarPart starPart(JsonNode node) {
+        try {
+            return AiStarPart.valueOf(node.asText(""));
+        } catch (IllegalArgumentException e) {
+            throw new AiResponseInvalidException("STAR 구분이 올바르지 않습니다.");
+        }
     }
 
     private JsonNode items(JsonNode array, String name) {
@@ -160,6 +196,14 @@ public class AiResponseValidator {
             throw new AiResponseInvalidException(reason);
         }
         return node.asText().strip();
+    }
+
+    private String requireText(JsonNode node, String reason, int maxLength) {
+        String text = requireText(node, reason);
+        if (text.length() > maxLength) {
+            throw new AiResponseInvalidException("글자 수가 너무 많습니다.");
+        }
+        return text;
     }
 
     private LocalDate parseDate(String text) {

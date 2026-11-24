@@ -105,7 +105,9 @@ class GeminiGeneratorsTest {
         WeeklyInsightInput input = new WeeklyInsightInput(LocalDate.of(2026, 10, 19), LocalDate.of(2026, 10, 25),
                 "10월 3주차", new WeeklyInsightInput.WeekStats(4, 3), null, true,
                 List.of(new WeeklyInsightInput.DayInput(LocalDate.of(2026, 10, 21),
-                        List.of(new AiTaskInput("보고서", true, null)), List.of(), "오늘 회고")));
+                        List.of(new AiTaskInput("보고서", true, null)), List.of(), "오늘 회고")),
+                new WeeklyInsightInput.Profile("IT_DEVELOPMENT", "IT/개발", List.of(
+                        new WeeklyInsightInput.CompetencyInfo("DEV_PROBLEM_SOLVING", "문제 해결 능력", "정의 문구"))));
         String tooLong = insight("가".repeat(21));
         String ok = insight("회의록 한 줄 남기기");
         given(geminiClient.generate(any(), eq(GeminiClient.CallKind.WEEKLY_INSIGHT)))
@@ -120,14 +122,20 @@ class GeminiGeneratorsTest {
                 .contains("\"completionRate\":75")
                 .contains("\"previousWeekStats\":null")
                 .contains("\"insufficientContent\":true")
-                .contains("\"reflection\":\"오늘 회고\"");
+                .contains("\"reflection\":\"오늘 회고\"")
+                .contains("\"targetJobGroupCode\":\"IT_DEVELOPMENT\"")
+                .contains("\"code\":\"DEV_PROBLEM_SOLVING\"")
+                .contains("\"definition\":\"정의 문구\"");
+        // 프로필 정보 중 식별 정보(닉네임·이메일·성별·나이)는 입력 구조에 아예 없다
+        assertThat(captor.getValue().userContent())
+                .doesNotContain("nickname").doesNotContain("email").doesNotContain("gender").doesNotContain("age");
     }
 
     private String insight(String action) {
         return """
                 {"title":"4개 중 3개를 끝냈어요","subtitle":"꾸준히 기록했어요",
-                 "strengths":[{"title":"강점","description":"설명","tags":[],"evidences":[{"date":"2026-10-21","type":"TASK"}]}],
-                 "improvements":[{"title":"보완","description":"설명","evidences":[{"date":"2026-10-21","type":"TASK"}],"action":"%s"}]}
+                 "strengths":[{"title":"강점","description":"설명","competencyCode":null,"tags":[],"evidences":[{"date":"2026-10-21","type":"TASK"}]}],
+                 "improvements":[{"title":"보완","description":"설명","starPart":"S","evidences":[{"date":"2026-10-21","type":"TASK"}],"action":"%s"}]}
                 """.formatted(action);
     }
 }

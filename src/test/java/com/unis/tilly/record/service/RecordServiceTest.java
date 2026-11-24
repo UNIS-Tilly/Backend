@@ -2,6 +2,7 @@ package com.unis.tilly.record.service;
 
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
+import com.unis.tilly.insight.service.InsightLockService;
 import com.unis.tilly.record.entity.DailyRecord;
 import com.unis.tilly.record.entity.DailyReflection;
 import com.unis.tilly.record.entity.RecordQuestion;
@@ -54,13 +55,16 @@ class RecordServiceTest {
     private TaskService taskService;
     @Mock
     private UserService userService;
+    @Mock
+    private InsightLockService insightLockService;
 
     private RecordService recordService;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW.atZone(SEOUL).toInstant(), SEOUL);
-        recordService = new RecordService(recordRepository, questionRepository, reflectionRepository, taskService, userService, clock);
+        recordService = new RecordService(recordRepository, questionRepository, reflectionRepository, taskService, userService,
+                insightLockService, clock);
     }
 
     // ---- 6.1 요약 ----
@@ -429,6 +433,87 @@ class RecordServiceTest {
 
         assertThat(recordService.storeQuestions(1L, DATE, List.of("새 질문"))).containsExactly(existing);
         verify(questionRepository, never()).save(any());
+    }
+
+    // ---- 잠금·인사이트 입력 (D-130, D-137, 9.2) ----
+
+    @Test
+    void IN03_잠긴_주는_임시저장_완료_질문_받기가_409다() {
+        given(insightLockService.isLocked(1L, DATE)).willReturn(true);
+
+        assertLocked(() -> recordService.saveDraft(1L, "2026-10-21", true, memo(10L, "메모")));
+        assertLocked(() -> recordService.complete(1L, "2026-10-21", emptyContent()));
+        assertLocked(() -> recordService.prepareQuestions(1L, "2026-10-21", emptyContent()));
+        verify(taskService, never()).replaceMemosOn(anyLong(), any(), any());
+        verify(reflectionRepository, never()).save(any());
+    }
+
+    @Test
+    void IN03_요약의_locked는_인사이트_잠금_판정을_따른다() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(insightLockService.isLocked(1L, DATE)).willReturn(true);
+
+        assertThat(recordService.getSummary(1L, "2026-10-21").locked()).isTrue();
+    }
+
+    @Test
+    void IN03_자동_질문은_잠긴_주면_건너뛴다() {
+        given(insightLockService.isLocked(1L, DATE)).willReturn(true);
+
+        assertThat(recordService.prepareAutoQuestions(1L, DATE)).isEmpty();
+        verify(taskService, never()).getTasksOn(anyLong(), any());
+    }
+
+    @Test
+    void IN03_퇴근_완료_여부를_돌려준다() {
+        DailyRecord record = record(RecordStatus.DRAFT);
+        assertThat(recordService.isCompleted(1L, DATE)).isFalse();
+
+        record.complete(NOW);
+        assertThat(recordService.isCompleted(1L, DATE)).isTrue();
+        given(recordRepository.findByUserIdAndDate(1L, DATE.plusDays(1))).willReturn(Optional.empty());
+        assertThat(recordService.isCompleted(1L, DATE.plusDays(1))).isFalse();
+    }
+
+    @Test
+    void IN03_퇴근_완료한_날의_회고와_답변한_질문만_모은다() {
+        DailyRecord completed = new DailyRecord(1L, DATE, RecordStatus.COMPLETED);
+        ReflectionTestUtils.setField(completed, "id", 100L);
+        DailyRecord blankReflectionDay = new DailyRecord(1L, DATE.plusDays(1), RecordStatus.COMPLETED);
+        ReflectionTestUtils.setField(blankReflectionDay, "id", 101L);
+        given(recordRepository.findAllByUserIdAndDateBetweenAndStatusIn(any(), any(), any(), any()))
+                .willReturn(List.of(blankReflectionDay, completed));
+        given(reflectionRepository.findAllByUserIdAndDateBetween(1L, DATE, DATE.plusDays(6))).willReturn(List.of(
+                new DailyReflection(1L, DATE, "회고"), new DailyReflection(1L, DATE.plusDays(1), "   ")));
+        RecordQuestion answered = question(501L, 1, "답변");
+        RecordQuestion unanswered = question(502L, 2, null);
+        ReflectionTestUtils.setField(answered, "recordId", 100L);
+        ReflectionTestUtils.setField(unanswered, "recordId", 100L);
+        given(questionRepository.findAllByRecordIdInOrderByRecordIdAscOrderAsc(any()))
+                .willReturn(List.of(answered, unanswered));
+
+        List<RecordService.CompletedDay> days = recordService.getCompletedDays(1L, DATE, DATE.plusDays(6));
+
+        assertThat(days).extracting(RecordService.CompletedDay::date).containsExactly(DATE, DATE.plusDays(1));
+        assertThat(days.get(0).reflection()).isEqualTo("회고");
+        assertThat(days.get(0).answers()).extracting(RecordService.AnsweredQuestion::answer).containsExactly("답변");
+        assertThat(days.get(1).reflection()).isNull();   // 공백뿐인 회고는 없는 것
+        assertThat(days.get(1).answers()).isEmpty();
+    }
+
+    @Test
+    void IN03_퇴근_완료한_날이_없으면_빈_목록이다() {
+        given(recordRepository.findAllByUserIdAndDateBetweenAndStatusIn(any(), any(), any(), any()))
+                .willReturn(List.of());
+
+        assertThat(recordService.getCompletedDays(1L, DATE, DATE.plusDays(6))).isEmpty();
+        verify(questionRepository, never()).findAllByRecordIdInOrderByRecordIdAscOrderAsc(any());
+    }
+
+    private void assertLocked(ThrowableAssert.ThrowingCallable callable) {
+        assertThatThrownBy(callable)
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.RECORD_LOCKED));
     }
 
     // ---- 6.4 완료 ----
