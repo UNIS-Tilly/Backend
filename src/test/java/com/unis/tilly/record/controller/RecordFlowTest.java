@@ -7,6 +7,7 @@ import com.unis.tilly.record.entity.DailyRecord;
 import com.unis.tilly.record.entity.RecordQuestion;
 import com.unis.tilly.record.enums.RecordStatus;
 import com.unis.tilly.record.repository.DailyRecordRepository;
+import com.unis.tilly.record.repository.DailyReflectionRepository;
 import com.unis.tilly.record.repository.RecordQuestionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -43,7 +45,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 6.1~6.4, 7.1 (RC-05, RC-09, RC-10, RC-12, RC-13, HM-10, HM-11, AR-01, AR-02, AR-04)를
+// 6.1~6.4, 6.7, 7.1 (RC-05, RC-09, RC-10, RC-12, RC-13, HM-10, HM-11, AR-01, AR-02, AR-04, 하루 회고)를
 // 실제 가입된 사용자 + MySQL로 끝까지 확인한다. 질문 생성(6.5)은 AI 연동 단계라 질문은 저장소로 직접 넣는다.
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -89,6 +91,8 @@ class RecordFlowTest {
     private DailyRecordRepository recordRepository;
     @Autowired
     private RecordQuestionRepository questionRepository;
+    @Autowired
+    private DailyReflectionRepository reflectionRepository;
 
     @MockitoBean
     private GoogleOidcClient googleOidcClient;
@@ -135,9 +139,9 @@ class RecordFlowTest {
     }
 
     @Test
-    void RC12_보내지_않은_메모는_지우고_그날_보이지_않는_할_일의_메모는_건드리지_않는다() throws Exception {
+    void RC12_보내지_않은_메모는_지우고_다른_날_할_일의_메모는_건드리지_않는다() throws Exception {
         Session me = register();
-        // 10/20에 완료한 할 일 → 10/21에는 보이지 않는다
+        // 10/20에 추가한 할 일 → 10/21 목록에는 없다 (이월 없음)
         clock.setToday(LocalDate.of(2026, 10, 20));
         Long doneYesterday = createTask(me, "어제 끝낸 일", "2026-10-20");
         saveDraft(me, "2026-10-20", true, List.of(memo(doneYesterday, "어제 메모")), List.of());
@@ -184,6 +188,121 @@ class RecordFlowTest {
     @Test
     void HM10_토큰_없이_요약을_조회하면_401() throws Exception {
         mockMvc.perform(get("/api/records/2026-10-21/summary")).andExpect(status().isUnauthorized());
+    }
+
+    // ---- 하루 회고 (6.3, 6.4, 6.7) ----
+
+    @Test
+    void RC12_회고를_수동_저장하면_조회되고_회고만_있어도_DRAFT가_된다() throws Exception {
+        Session me = register();
+
+        reflect(me, "2026-10-21", true, "오늘은 보고서 구조를 바꾸며 배운 점이 많았다.")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT"));
+
+        reflection(me, "2026-10-21")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.date").value("2026-10-21"))
+                .andExpect(jsonPath("$.data.reflection").value("오늘은 보고서 구조를 바꾸며 배운 점이 많았다."));
+        summary(me, "2026-10-21")
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.reflectionWritten").value(true));
+        summary(me, "2026-10-22").andExpect(jsonPath("$.data.reflectionWritten").value(false));
+        // 회고만 있어도 아카이브에서 "기록 있는 날"
+        mockMvc.perform(get("/api/archive/calendar").param("year", "2026").param("month", "10")
+                        .header("Authorization", me.bearer()))
+                .andExpect(jsonPath("$.data.days[20].hasRecord").value(true));
+    }
+
+    @Test
+    void RC12_회고_자동저장은_저장만_하고_상태는_NOT_STARTED로_남는다() throws Exception {
+        Session me = register();
+
+        reflect(me, "2026-10-21", false, "자동저장 회고")
+                .andExpect(jsonPath("$.data.status").value("NOT_STARTED"));
+
+        reflection(me, "2026-10-21").andExpect(jsonPath("$.data.reflection").value("자동저장 회고"));
+        summary(me, "2026-10-21").andExpect(jsonPath("$.data.status").value("NOT_STARTED"));
+    }
+
+    @Test
+    void RC12_회고를_다시_보내면_덮어쓰고_비우면_지워진다() throws Exception {
+        Session me = register();
+        reflect(me, "2026-10-21", true, "처음 회고");
+
+        reflect(me, "2026-10-21", true, "고친 회고").andExpect(status().isOk());
+        summary(me, "2026-10-21").andExpect(jsonPath("$.data.reflectionWritten").value(true));
+        reflection(me, "2026-10-21").andExpect(jsonPath("$.data.reflection").value("고친 회고"));
+
+        // 전체 교체: 회고를 보내지 않으면 지워진다. 기록 상태는 DRAFT에서 내려가지 않는다
+        saveDraft(me, "2026-10-21", true, List.of(), List.of()).andExpect(jsonPath("$.data.status").value("DRAFT"));
+        reflection(me, "2026-10-21").andExpect(jsonPath("$.data.reflection").doesNotExist());
+        summary(me, "2026-10-21").andExpect(jsonPath("$.data.reflectionWritten").value(false));
+        assertThat(reflectionRepository.findByUserIdAndDate(me.userId(), LocalDate.of(2026, 10, 21))).isEmpty();
+    }
+
+    @Test
+    void RC12_회고는_2000자까지이고_넘으면_400이며_기존_회고는_그대로다() throws Exception {
+        Session me = register();
+        reflect(me, "2026-10-21", true, "가".repeat(2000)).andExpect(status().isOk());
+
+        reflect(me, "2026-10-21", true, "가".repeat(2001))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+        mockMvc.perform(post("/api/records/2026-10-21/complete").header("Authorization", me.bearer())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of("reflection", "나".repeat(2001)))))
+                .andExpect(status().isBadRequest());
+
+        reflection(me, "2026-10-21").andExpect(jsonPath("$.data.reflection").value("가".repeat(2000)));
+    }
+
+    @Test
+    void RC13_완료할_때_보낸_회고도_저장된다() throws Exception {
+        Session me = register();
+
+        mockMvc.perform(post("/api/records/2026-10-21/complete").header("Authorization", me.bearer())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(Map.of("reflection", "퇴근 회고"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        reflection(me, "2026-10-21").andExpect(jsonPath("$.data.reflection").value("퇴근 회고"));
+    }
+
+    @Test
+    void RC12_회고는_사용자와_날짜별로_따로_저장되고_다른_사용자에게는_보이지_않는다() throws Exception {
+        Session owner = register();
+        reflect(owner, "2026-10-21", true, "내 회고");
+        Session me = register();
+
+        reflection(me, "2026-10-21").andExpect(jsonPath("$.data.reflection").doesNotExist());
+        reflection(owner, "2026-10-22").andExpect(jsonPath("$.data.reflection").doesNotExist());
+        reflection(owner, "2026-10-21").andExpect(jsonPath("$.data.reflection").value("내 회고"));
+        reflect(me, "2026-10-21", true, "다른 사람 회고").andExpect(status().isOk());
+        reflection(owner, "2026-10-21").andExpect(jsonPath("$.data.reflection").value("내 회고"));
+    }
+
+    @Test
+    void RC12_회고_조회는_날짜_형식이_틀리면_400이고_토큰이_없으면_401() throws Exception {
+        Session me = register();
+
+        reflection(me, "2026-13-01").andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/records/2026-10-21/reflection")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void ST03_탈퇴하면_회고도_함께_삭제된다() throws Exception {
+        Session me = register();
+        reflect(me, "2026-10-21", true, "지워질 회고");
+        assertThat(reflectionRepository.findByUserIdAndDate(me.userId(), LocalDate.of(2026, 10, 21))).isPresent();
+
+        mockMvc.perform(post("/api/users/me/withdrawal").header("Authorization", me.bearer())
+                        .contentType("application/json")
+                        .content("{\"confirmEmail\":\"" + me.email() + "\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(reflectionRepository.findByUserIdAndDate(me.userId(), LocalDate.of(2026, 10, 21))).isEmpty();
     }
 
     // ---- 6.2 하루 질문 / 답변 ----
@@ -274,10 +393,12 @@ class RecordFlowTest {
     @Test
     void AR01_그달_모든_날짜에_기록_유무를_돌려준다() throws Exception {
         Session me = register();
-        Long taskId = createTask(me, "보고서", "2026-10-01");
-        saveDraft(me, "2026-10-19", true, List.of(memo(taskId, "임시저장")), List.of());       // DRAFT
-        complete(me, "2026-10-21");                                                         // COMPLETED
-        saveDraft(me, "2026-10-20", false, List.of(memo(taskId, "자동저장만")), List.of());     // 기록 없음
+        // 할 일은 그날에만 보이므로 날짜마다 할 일을 만든다 (이월 없음)
+        Long draftTask = createTask(me, "임시저장 일", "2026-10-19");
+        Long autoTask = createTask(me, "자동저장 일", "2026-10-20");
+        saveDraft(me, "2026-10-19", true, List.of(memo(draftTask, "임시저장")), List.of());       // DRAFT
+        complete(me, "2026-10-21");                                                           // COMPLETED
+        saveDraft(me, "2026-10-20", false, List.of(memo(autoTask, "자동저장만")), List.of());     // 기록 없음
 
         mockMvc.perform(get("/api/archive/calendar").param("year", "2026").param("month", "10")
                         .header("Authorization", me.bearer()))
@@ -340,6 +461,16 @@ class RecordFlowTest {
                 .content(objectMapper.writeValueAsString(Map.of("manual", manual, "taskMemos", memos, "answers", answers))));
     }
 
+    private ResultActions reflect(Session session, String date, boolean manual, String reflection) throws Exception {
+        return mockMvc.perform(put("/api/records/" + date + "/draft").header("Authorization", session.bearer())
+                .contentType("application/json")
+                .content(objectMapper.writeValueAsString(Map.of("manual", manual, "reflection", reflection))));
+    }
+
+    private ResultActions reflection(Session session, String date) throws Exception {
+        return mockMvc.perform(get("/api/records/" + date + "/reflection").header("Authorization", session.bearer()));
+    }
+
     private ResultActions complete(Session session, String date) throws Exception {
         return mockMvc.perform(post("/api/records/" + date + "/complete").header("Authorization", session.bearer())
                 .contentType("application/json").content("{}"));
@@ -375,8 +506,9 @@ class RecordFlowTest {
 
     private Session register() throws Exception {
         String sub = "sub-" + UUID.randomUUID();
+        String email = "user-" + UUID.randomUUID() + "@example.com";
         given(googleOidcClient.exchangeCodeForUserInfo(sub))
-                .willReturn(new GoogleOidcClient.GoogleUserInfo(sub, "user-" + UUID.randomUUID() + "@example.com", true));
+                .willReturn(new GoogleOidcClient.GoogleUserInfo(sub, email, true));
         MvcResult login = mockMvc.perform(post("/api/auth/login/google")
                         .contentType("application/json").content("{\"code\":\"" + sub + "\"}"))
                 .andReturn();
@@ -386,7 +518,7 @@ class RecordFlowTest {
                                 "signupToken", data(login).get("signupToken"), "nickname", "닉네임"))))
                 .andReturn();
         Map<String, Object> body = data(registered);
-        return new Session((String) body.get("accessToken"), ((Number) body.get("userId")).longValue());
+        return new Session((String) body.get("accessToken"), ((Number) body.get("userId")).longValue(), email);
     }
 
     @SuppressWarnings("unchecked")
@@ -396,7 +528,7 @@ class RecordFlowTest {
         return (Map<String, Object>) body.get("data");
     }
 
-    private record Session(String accessToken, Long userId) {
+    private record Session(String accessToken, Long userId, String email) {
         String bearer() {
             return "Bearer " + accessToken;
         }

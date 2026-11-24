@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 5.1~5.5, HM-02~08, RC-03 (D-102~D-106)를 실제 가입된 사용자 + MySQL 기준으로 끝까지 확인한다.
+// 5.1~5.5, HM-02~08, RC-03 (D-102~D-106, 2026-11-24 변경: 그날 추가한 할 일만 노출)를 실제 가입된 사용자 + MySQL 기준으로 끝까지 확인한다.
 // "오늘"은 테스트용 Clock으로 고정·이동한다.
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -126,42 +126,71 @@ class TaskFlowTest {
     }
 
     @Test
-    void HM02_배정일이_지난_미완료는_이월되고_마감이_지나면_overdueDays를_준다() throws Exception {
+    void HM02_그날_추가한_할_일만_보이고_이월되지_않는다() throws Exception {
         String token = registerAndGetAccessToken();
-        createTask(token, "지연된 일", "2026-10-15", "2026-10-17T18:00");
-        createTask(token, "미래 일", "2026-10-25", null);
+        createTask(token, "어제 일", "2026-10-20", null);
+        createTask(token, "오늘 일", "2026-10-21", null);
+        createTask(token, "내일 일", "2026-10-22", null);
 
         getTasks(token, "2026-10-21")
                 .andExpect(jsonPath("$.data.totalCount").value(1))
-                .andExpect(jsonPath("$.data.incomplete[0].title").value("지연된 일"))
-                .andExpect(jsonPath("$.data.incomplete[0].overdueDays").value(4));
+                .andExpect(jsonPath("$.data.incomplete[0].title").value("오늘 일"));
+        // 어제 못 끝낸 일은 오늘로 넘어오지 않고, 어제 날짜에만 남아 있다
+        getTasks(token, "2026-10-20")
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.incomplete[0].title").value("어제 일"));
+        getTasks(token, "2026-10-23").andExpect(jsonPath("$.data.totalCount").value(0));
     }
 
     @Test
-    void HM02_배정일이_없는_할_일은_생성일부터_계속_보인다() throws Exception {
+    void HM02_마감은_오늘_기준_남은_일수로_내려주고_조회일과_무관하다() throws Exception {
         String token = registerAndGetAccessToken();
-        createTask(token, "날짜 없는 일", null, null);
+        createTask(token, "여유 있는 일", "2026-10-21", "2026-10-24T18:00");
+        createTask(token, "오늘 마감", "2026-10-21", "2026-10-21T23:00");
+        createTask(token, "지난 마감", "2026-10-21", "2026-10-17T18:00");
+        createTask(token, "마감 없음", "2026-10-21", null);
+        Long done = createTask(token, "끝낸 마감", "2026-10-21", "2026-10-30T18:00");
+        patchTask(token, done, "{\"completed\":true}").andExpect(status().isOk());
+
+        getTasks(token, "2026-10-21")
+                .andExpect(jsonPath("$.data.incomplete[0].dueInDays").value(3))
+                .andExpect(jsonPath("$.data.incomplete[1].dueInDays").value(0))
+                .andExpect(jsonPath("$.data.incomplete[2].dueInDays").value(-4))
+                .andExpect(jsonPath("$.data.incomplete[3].dueInDays").doesNotExist())
+                .andExpect(jsonPath("$.data.incomplete[0].overdueDays").doesNotExist())
+                .andExpect(jsonPath("$.data.completed[0].dueInDays").doesNotExist());
+
+        // 서버의 오늘이 하루 지나면 남은 일수도 하루 줄어든다 (과거 날짜 목록을 봐도 "오늘" 기준)
+        clock.setToday(LocalDate.of(2026, 10, 22));
+        getTasks(token, "2026-10-21").andExpect(jsonPath("$.data.incomplete[0].dueInDays").value(2));
+    }
+
+    @Test
+    void HM02_배정일을_생략하면_오늘로_저장되고_그날에만_보인다() throws Exception {
+        String token = registerAndGetAccessToken();
+        createTask(token, "날짜 생략", null, null);
 
         getTasks(token, "2026-10-20").andExpect(jsonPath("$.data.totalCount").value(0));
-        getTasks(token, "2026-10-21").andExpect(jsonPath("$.data.incomplete[0].title").value("날짜 없는 일"));
-        getTasks(token, "2026-11-30").andExpect(jsonPath("$.data.incomplete[0].date").doesNotExist());
+        getTasks(token, "2026-10-21")
+                .andExpect(jsonPath("$.data.incomplete[0].title").value("날짜 생략"))
+                .andExpect(jsonPath("$.data.incomplete[0].date").value("2026-10-21"));
+        getTasks(token, "2026-10-22").andExpect(jsonPath("$.data.totalCount").value(0));
     }
 
     @Test
-    void HM02_과거_날짜는_그날_기준으로_다시_계산한다() throws Exception {
+    void HM04_완료해도_배정일_목록에_남고_완료일은_기록만_한다() throws Exception {
         String token = registerAndGetAccessToken();
         Long taskId = createTask(token, "이틀 걸린 일", "2026-10-20", null);
-        patchTask(token, taskId, "{\"completed\":true}").andExpect(status().isOk()); // 10/21 완료
+        clock.setToday(LocalDate.of(2026, 10, 21));
+        patchTask(token, taskId, "{\"completed\":true}").andExpect(status().isOk()); // 10/21에 완료
 
-        // 10/20에는 아직 미완료였다
+        // 배정일(10/20) 목록에서 완료로 보이고, 완료한 날(10/21) 목록에는 나오지 않는다
         getTasks(token, "2026-10-20")
-                .andExpect(jsonPath("$.data.completedCount").value(0))
-                .andExpect(jsonPath("$.data.incomplete[0].id").value(taskId))
-                .andExpect(jsonPath("$.data.incomplete[0].completed").value(false))
-                .andExpect(jsonPath("$.data.incomplete[0].completedDate").doesNotExist());
-        // 10/21에는 완료 목록에만 있고, 그 뒤로는 보이지 않는다
-        getTasks(token, "2026-10-21").andExpect(jsonPath("$.data.completed[0].id").value(taskId));
-        getTasks(token, "2026-10-22").andExpect(jsonPath("$.data.totalCount").value(0));
+                .andExpect(jsonPath("$.data.completedCount").value(1))
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.completed[0].id").value(taskId))
+                .andExpect(jsonPath("$.data.completed[0].completedDate").value("2026-10-21"));
+        getTasks(token, "2026-10-21").andExpect(jsonPath("$.data.totalCount").value(0));
     }
 
     @Test
@@ -208,7 +237,7 @@ class TaskFlowTest {
         getTasks(token, "2026-10-21")
                 .andExpect(jsonPath("$.data.totalCount").value(1))
                 .andExpect(jsonPath("$.data.incomplete[0].dueDate").value("2026-10-21T09:05:00"))
-                .andExpect(jsonPath("$.data.incomplete[0].overdueDays").doesNotExist());
+                .andExpect(jsonPath("$.data.incomplete[0].dueInDays").value(0));
     }
 
     @Test
@@ -250,7 +279,7 @@ class TaskFlowTest {
     }
 
     @Test
-    void HM07_생략한_필드는_유지되고_null을_보내면_해제된다() throws Exception {
+    void HM07_생략한_필드는_유지되고_마감에_null을_보내면_해제된다() throws Exception {
         String token = registerAndGetAccessToken();
         Long taskId = createTask(token, "제목", "2026-10-21", "2026-10-23T09:00");
 
@@ -262,25 +291,35 @@ class TaskFlowTest {
                 .andExpect(jsonPath("$.data.date").value("2026-10-21"))
                 .andExpect(jsonPath("$.data.dueDate").doesNotExist());
 
-        patchTask(token, taskId, "{\"date\":null,\"dueDate\":\"2026-10-30T23:59\"}")
-                .andExpect(jsonPath("$.data.date").doesNotExist())
+        patchTask(token, taskId, "{\"date\":\"2026-10-22\",\"dueDate\":\"2026-10-30T23:59\"}")
+                .andExpect(jsonPath("$.data.date").value("2026-10-22"))
                 .andExpect(jsonPath("$.data.dueDate").value("2026-10-30T23:59:00"));
+    }
+
+    @Test
+    void HM07_배정일은_필수라_null을_보내면_400이고_값은_그대로다() throws Exception {
+        String token = registerAndGetAccessToken();
+        Long taskId = createTask(token, "제목", "2026-10-21", null);
+
+        patchTask(token, taskId, "{\"date\":null}").andExpect(status().isBadRequest());
+
+        getTasks(token, "2026-10-21").andExpect(jsonPath("$.data.incomplete[0].id").value(taskId));
     }
 
     @Test
     void HM07_배정일을_가득_찬_날로_옮기면_TASK_LIMIT_EXCEEDED() throws Exception {
         String token = registerAndGetAccessToken();
-        // 먼저 만든다: 10/22의 미완료 20개는 10/25에도 이월되어 보이므로, 나중에 만들면 10/25 추가 자체가 막힌다
         Long taskId = createTask(token, "옮길 일", "2026-10-25", null);
         for (int i = 0; i < 20; i++) {
             createTask(token, "할일" + i, "2026-10-22", null);
         }
-        postTask(token, Map.of("title", "이월로 가득 찬 날", "date", "2026-10-25"))
-                .andExpect(jsonPath("$.errorCode").value("TASK_LIMIT_EXCEEDED"));
+        // 이월이 없으므로 10/22가 가득 차도 10/25에는 계속 추가할 수 있다
+        postTask(token, Map.of("title", "다른 날 일", "date", "2026-10-25")).andExpect(status().isCreated());
 
         patchTask(token, taskId, "{\"date\":\"2026-10-22\"}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("TASK_LIMIT_EXCEEDED"));
+        getTasks(token, "2026-10-25").andExpect(jsonPath("$.data.incomplete[0].id").value(taskId));
     }
 
     @Test

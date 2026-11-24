@@ -11,7 +11,7 @@ public record WeeklyInsightInput(
         String weekLabel,
         WeekStats stats,
         WeekStats previousWeekStats,   // 지난 주 비교 자료가 없으면 null → 비교 문구 금지
-        boolean insufficientContent,   // 메모·답변이 하나도 없어 할 일 제목만으로 분석 (D-54)
+        boolean insufficientContent,   // 메모·답변·회고가 하나도 없어 할 일 제목만으로 분석 (D-54)
         List<DayInput> days) {
 
     public record WeekStats(int totalCount, int completedCount) {
@@ -22,7 +22,8 @@ public record WeeklyInsightInput(
         }
     }
 
-    public record DayInput(LocalDate date, List<AiTaskInput> tasks, List<AnswerInput> answers) {
+    // reflection: 그날 하루 회고 (없으면 null)
+    public record DayInput(LocalDate date, List<AiTaskInput> tasks, List<AnswerInput> answers, String reflection) {
     }
 
     public record AnswerInput(String question, String answer) {

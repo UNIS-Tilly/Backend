@@ -2,7 +2,7 @@ package com.unis.tilly.task.dto;
 
 import com.fasterxml.jackson.annotation.JsonSetter;
 
-// 5.4: 보낸 필드만 바꾼다. 필드를 생략하면 유지, date/dueDate를 명시적 null로 보내면 해제.
+// 5.4: 보낸 필드만 바꾼다. 필드를 생략하면 유지, dueDate를 명시적 null로 보내면 해제. date는 필수라 null이면 400.
 // record로는 "생략"과 "null"을 구분할 수 없어서 setter 호출 여부로 구분한다.
 public class TaskUpdateRequest {
 

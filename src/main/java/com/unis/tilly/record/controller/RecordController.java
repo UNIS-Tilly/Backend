@@ -8,6 +8,7 @@ import com.unis.tilly.record.dto.RecordCompleteResponse;
 import com.unis.tilly.record.dto.RecordDraftRequest;
 import com.unis.tilly.record.dto.RecordDraftResponse;
 import com.unis.tilly.record.dto.RecordQuestionsResponse;
+import com.unis.tilly.record.dto.RecordReflectionResponse;
 import com.unis.tilly.record.dto.RecordSummaryResponse;
 import com.unis.tilly.record.service.RecordService;
 import jakarta.validation.Valid;
@@ -42,6 +43,14 @@ public class RecordController {
                                                              @PathVariable String date) {
         return ApiResponse.success(SuccessMessage.OK.message(),
                 RecordQuestionsResponse.from(recordService.getQuestions(user.userId(), date)));
+    }
+
+    // 6.7 하루 회고 조회
+    @GetMapping("/{date}/reflection")
+    public ApiResponse<RecordReflectionResponse> getReflection(@AuthenticationPrincipal AuthenticatedUser user,
+                                                               @PathVariable String date) {
+        return ApiResponse.success(SuccessMessage.OK.message(),
+                RecordReflectionResponse.from(recordService.getReflection(user.userId(), date)));
     }
 
     // 6.3 RC-12

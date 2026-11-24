@@ -15,7 +15,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
-// 5.0 할 일 모델 (D-102~D-106)
+// 5.0 할 일 모델 (D-102~D-106, 2026-11-24 변경: 배정일 하루에만 노출, 마감은 남은 일수 표시용)
 @Entity
 @Table(name = "tasks")
 @Getter
@@ -32,10 +32,11 @@ public class Task extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String title;
 
-    // 배정일. null이면 미완료인 동안 생성일부터 항상 노출된다.
+    // 배정일. 할 일은 이 날짜에만 노출된다(이월 없음).
+    @Column(nullable = false)
     private LocalDate date;
 
-    // 마감 일시(분 단위, Asia/Seoul). 노출 여부에는 영향이 없고 표시와 지연 일수 계산에만 쓴다.
+    // 마감 일시(분 단위, Asia/Seoul). 노출 여부와 무관하고 "오늘 기준 며칠 남았는지" 표시에만 쓴다.
     @Column(name = "due_date")
     private LocalDateTime dueDate;
 
@@ -87,33 +88,12 @@ public class Task extends BaseEntity {
         this.completedDate = null;
     }
 
-    // day 시점에 아직 끝나지 않았는지 (과거 날짜 재구성: 그 뒤에 완료했으면 그날엔 미완료)
-    public boolean isIncompleteOn(LocalDate day) {
-        return completedDate == null || completedDate.isAfter(day);
-    }
-
-    // 5.1 노출 규칙: 완료 목록은 완료일 기준, 미완료 목록은 배정일(없으면 생성일) 이후 끝나기 전까지
-    public boolean isVisibleOn(LocalDate day) {
-        if (day.equals(completedDate)) {
-            return true;
-        }
-        if (!isIncompleteOn(day)) {
-            return false;
-        }
-        LocalDate visibleFrom = date != null ? date : getCreatedAt().toLocalDate();
-        return !visibleFrom.isAfter(day);
-    }
-
-    // D-104: 마감 날짜가 지났는데 day 시점에 끝나지 않았으면 지난 일수, 아니면 null.
-    // 마감 시각은 표시용이고 지연은 날짜 기준으로 센다(마감 당일은 시각이 지나도 지연 아님, 2026-11-12 사용자 결정).
-    public Integer overdueDaysOn(LocalDate day) {
-        if (dueDate == null || !isIncompleteOn(day)) {
+    // 마감까지 남은 일수 = 마감 날짜 − 오늘. 양수=남음, 0=오늘 마감, 음수=지남.
+    // 마감 시각은 표시용이고 날짜 기준으로 센다. 마감이 없거나 이미 완료했으면 null.
+    public Integer dueInDays(LocalDate today) {
+        if (dueDate == null || completed) {
             return null;
         }
-        LocalDate dueDay = dueDate.toLocalDate();
-        if (!day.isAfter(dueDay)) {
-            return null;
-        }
-        return (int) ChronoUnit.DAYS.between(dueDay, day);
+        return (int) ChronoUnit.DAYS.between(today, dueDate.toLocalDate());
     }
 }

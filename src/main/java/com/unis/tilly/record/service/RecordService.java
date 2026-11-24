@@ -3,9 +3,11 @@ package com.unis.tilly.record.service;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
 import com.unis.tilly.record.entity.DailyRecord;
+import com.unis.tilly.record.entity.DailyReflection;
 import com.unis.tilly.record.entity.RecordQuestion;
 import com.unis.tilly.record.enums.RecordStatus;
 import com.unis.tilly.record.repository.DailyRecordRepository;
+import com.unis.tilly.record.repository.DailyReflectionRepository;
 import com.unis.tilly.record.repository.RecordQuestionRepository;
 import com.unis.tilly.task.service.TaskService;
 import com.unis.tilly.user.service.UserService;
@@ -25,13 +27,14 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// 6.1~6.4 (D-95, D-106~D-108). 할 일 메모는 TaskService, 성장 레벨은 UserService를 통해서만 다룬다.
+// 6.1~6.4, 6.7 (D-95, D-106~D-108, 하루 회고 복원 2026-11-24). 할 일 메모는 TaskService, 성장 레벨은 UserService를 통해서만 다룬다.
 @Service
 @RequiredArgsConstructor
 public class RecordService {
 
     private final DailyRecordRepository recordRepository;
     private final RecordQuestionRepository questionRepository;
+    private final DailyReflectionRepository reflectionRepository;
     private final TaskService taskService;
     private final UserService userService;
     private final Clock clock;
@@ -44,6 +47,7 @@ public class RecordService {
                 record.map(DailyRecord::getStatus).orElse(RecordStatus.NOT_STARTED),
                 isLocked(userId, date),
                 taskService.countMemosOn(userId, date),
+                reflectionRepository.existsByUserIdAndDate(userId, date),
                 record.map(DailyRecord::getCompletedAt).orElse(null));
     }
 
@@ -54,6 +58,14 @@ public class RecordService {
                 .map(record -> questionRepository.findAllByRecordIdOrderByOrderAsc(record.getId()))
                 .orElse(List.of());
         return new DailyQuestions(date, questions);
+    }
+
+    // 6.7 하루 회고 조회. 저장된 회고가 없으면 content = null
+    public DailyReflectionView getReflection(Long userId, String dateText) {
+        LocalDate date = parseDate(dateText);
+        return new DailyReflectionView(date, reflectionRepository.findByUserIdAndDate(userId, date)
+                .map(DailyReflection::getContent)
+                .orElse(null));
     }
 
     // 6.3 RC-12 임시저장 (D-95)
@@ -100,7 +112,7 @@ public class RecordService {
         return new CompleteResult(date, record.getStatus(), record.getCompletedAt(), level);
     }
 
-    // 메모·답변 전체 교체. 실패하면 트랜잭션 전체가 롤백된다. 저장할 내용이 하나라도 있으면 true
+    // 메모·답변·회고 전체 교체. 실패하면 트랜잭션 전체가 롤백된다. 저장할 내용이 하나라도 있으면 true
     private boolean applyContent(Long userId, LocalDate date, Optional<DailyRecord> record, RecordContent content) {
         Map<Long, String> memos = toMemoMap(content.memos());
         Map<Long, AnswerInput> answers = toAnswerMap(content.answers());
@@ -115,7 +127,7 @@ public class RecordService {
             throw new CustomException(ErrorCode.QUESTION_NOT_FOUND);
         }
 
-        // 메모: 그날 보이는 할 일 범위에서 전체 교체 (TaskService가 범위 검증)
+        // 메모: 그날 추가한 할 일 범위에서 전체 교체 (TaskService가 범위 검증)
         taskService.replaceMemosOn(userId, date, memos);
 
         for (RecordQuestion question : questions) {
@@ -127,8 +139,24 @@ public class RecordService {
             }
         }
 
+        String reflection = blankToNull(content.reflection());
+        replaceReflection(userId, date, reflection);
+
         return memos.values().stream().anyMatch(this::hasText)
-                || answers.values().stream().anyMatch(a -> hasText(a.answer()));
+                || answers.values().stream().anyMatch(a -> hasText(a.answer()))
+                || reflection != null;
+    }
+
+    // 회고 전체 교체: 내용이 있으면 저장(있으면 덮어씀), 비어 있으면 저장된 회고를 지운다
+    private void replaceReflection(Long userId, LocalDate date, String reflection) {
+        Optional<DailyReflection> existing = reflectionRepository.findByUserIdAndDate(userId, date);
+        if (reflection == null) {
+            existing.ifPresent(reflectionRepository::delete);
+        } else if (existing.isPresent()) {
+            existing.get().changeContent(reflection);
+        } else {
+            reflectionRepository.save(new DailyReflection(userId, date, reflection));
+        }
     }
 
     // 인사이트 발행 여부에 따른 잠금 (API_SPEC 1.5). insight 도메인이 아직 없어 항상 false.
@@ -192,8 +220,8 @@ public class RecordService {
     public record AnswerInput(Long questionId, String answer, boolean skipped) {
     }
 
-    // 임시저장·완료 공통 입력 (null 목록은 빈 목록)
-    public record RecordContent(List<MemoInput> memos, List<AnswerInput> answers) {
+    // 임시저장·완료 공통 입력 (null 목록은 빈 목록, null·공백 회고는 "회고 없음")
+    public record RecordContent(List<MemoInput> memos, List<AnswerInput> answers, String reflection) {
         public RecordContent {
             memos = memos == null ? List.of() : memos;
             answers = answers == null ? List.of() : answers;
@@ -201,10 +229,13 @@ public class RecordService {
     }
 
     public record Summary(LocalDate date, RecordStatus status, boolean locked, int memoCount,
-                          LocalDateTime completedAt) {
+                          boolean reflectionWritten, LocalDateTime completedAt) {
     }
 
     public record DailyQuestions(LocalDate date, List<RecordQuestion> questions) {
+    }
+
+    public record DailyReflectionView(LocalDate date, String content) {
     }
 
     public record DraftResult(LocalDate date, RecordStatus status, LocalDateTime savedAt) {

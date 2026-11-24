@@ -33,6 +33,7 @@ public class GeminiQuestionGenerator implements QuestionGenerator {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("date", input.date().toString());
         data.put("tasks", input.tasks());
+        data.put("reflection", input.reflection());
         Prompt prompt = promptTemplates.render(PromptType.QUESTION, Map.of("records", toJson(data)));
 
         for (int attempt = 0; ; attempt++) {

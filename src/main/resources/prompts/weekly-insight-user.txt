@@ -3,8 +3,8 @@
 - stats: 이번 주 수치 (totalCount: 이번 주에 보인 할 일 수, completedCount: 완료한 할 일 수, completionRate: 완수율 %)
 - previousWeekStats: 지난 주 수치 (없으면 null)
 - recordedDays: 퇴근 완료한 날 수
-- insufficientContent: 메모·답변이 하나도 없으면 true
-- days: 날짜별 기록 (tasks: title·completed·memo, answers: question·answer)
+- insufficientContent: 메모·답변·회고가 하나도 없으면 true
+- days: 날짜별 기록 (tasks: title·completed·memo, answers: question·answer, reflection: 그날 하루 회고, 없으면 null)
 
 <records>
 {{records}}

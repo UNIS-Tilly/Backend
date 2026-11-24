@@ -22,12 +22,11 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-// 5.1~5.5, HM-02~08, RC-03 (D-102~D-106)
+// 5.1~5.5, HM-02~08, RC-03 (D-102~D-106, 2026-11-24 변경: 그날 추가한 할 일만 노출·배정일 필수)
 @ExtendWith(MockitoExtension.class)
 class TaskServiceTest {
 
@@ -49,12 +48,28 @@ class TaskServiceTest {
 
     @Test
     void HM02_날짜를_생략하면_오늘로_조회한다() {
-        given(taskRepository.findAllByUserIdAndCompletedDateOrderByIdAsc(1L, TODAY)).willReturn(List.of());
-        given(taskRepository.findAllIncompleteVisibleOn(1L, TODAY, TODAY.plusDays(1).atStartOfDay())).willReturn(List.of());
+        given(taskRepository.findAllByUserIdAndDateOrderByIdAsc(1L, TODAY)).willReturn(List.of());
 
         TaskService.DailyTasks result = taskService.getTasks(1L, null);
 
         assertThat(result.day()).isEqualTo(TODAY);
+        assertThat(result.today()).isEqualTo(TODAY);
+    }
+
+    @Test
+    void HM02_그날_추가한_할_일을_완료_여부로_나눈다() {
+        Task done = visibleTask(10L, null);
+        done.complete(TODAY);
+        Task open = visibleTask(11L, null);
+        LocalDate past = LocalDate.of(2026, 10, 18);
+        given(taskRepository.findAllByUserIdAndDateOrderByIdAsc(1L, past)).willReturn(List.of(done, open));
+
+        TaskService.DailyTasks result = taskService.getTasks(1L, "2026-10-18");
+
+        assertThat(result.day()).isEqualTo(past);
+        assertThat(result.today()).isEqualTo(TODAY);   // 마감 남은 일수는 조회일이 아니라 서버 오늘 기준
+        assertThat(result.completed()).containsExactly(done);
+        assertThat(result.incomplete()).containsExactly(open);
     }
 
     @Test
@@ -66,7 +81,7 @@ class TaskServiceTest {
 
     @Test
     void HM05_배정일과_마감일을_넣어_추가한다() {
-        stubVisibleCount(LocalDate.of(2026, 10, 22), 0, 0);
+        stubCount(LocalDate.of(2026, 10, 22), 0);
         given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         Task task = taskService.createTask(1L, "  고객 문의 정리  ", "2026-10-22", "2026-10-25T18:30");
@@ -79,19 +94,19 @@ class TaskServiceTest {
     }
 
     @Test
-    void HM05_배정일과_마감일_없이_추가할_수_있다() {
-        stubVisibleCount(TODAY, 0, 0);
+    void HM05_배정일을_생략하면_오늘로_저장하고_마감일_없이_추가할_수_있다() {
+        stubCount(TODAY, 0);
         given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         Task task = taskService.createTask(1L, "제목", null, null);
 
-        assertThat(task.getDate()).isNull();
+        assertThat(task.getDate()).isEqualTo(TODAY);
         assertThat(task.getDueDate()).isNull();
     }
 
     @Test
     void HM05_마감일이_배정일보다_앞서도_저장한다() {
-        stubVisibleCount(TODAY, 0, 0);
+        stubCount(TODAY, 0);
         given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         Task task = taskService.createTask(1L, "제목", "2026-10-21", "2026-10-19T09:00");
@@ -101,7 +116,7 @@ class TaskServiceTest {
 
     @Test
     void HM05_마감_일시에_초를_보내면_분_단위로_버려_저장한다() {
-        stubVisibleCount(TODAY, 0, 0);
+        stubCount(TODAY, 0);
         given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         Task task = taskService.createTask(1L, "제목", null, "2026-10-23T18:00:45");
@@ -128,7 +143,7 @@ class TaskServiceTest {
 
     @Test
     void HM05_배정일의_목록이_완료_포함_20개면_TASK_LIMIT_EXCEEDED() {
-        stubVisibleCount(LocalDate.of(2026, 10, 22), 5, 15);
+        stubCount(LocalDate.of(2026, 10, 22), 20);
 
         assertThatThrownBy(() -> taskService.createTask(1L, "제목", "2026-10-22", null))
                 .isInstanceOf(CustomException.class)
@@ -138,7 +153,7 @@ class TaskServiceTest {
 
     @Test
     void HM05_배정일이_없으면_오늘_목록으로_20개를_센다() {
-        stubVisibleCount(TODAY, 0, 20);
+        stubCount(TODAY, 20);
 
         assertThatThrownBy(() -> taskService.createTask(1L, "제목", null, null))
                 .isInstanceOf(CustomException.class)
@@ -147,7 +162,7 @@ class TaskServiceTest {
 
     @Test
     void HM05_19개면_추가된다() {
-        stubVisibleCount(TODAY, 4, 15);
+        stubCount(TODAY, 19);
         given(taskRepository.save(any(Task.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         Task task = taskService.createTask(1L, "제목", null, null);
@@ -195,23 +210,27 @@ class TaskServiceTest {
     }
 
     @Test
-    void HM07_배정일과_마감일에_null을_보내면_해제된다() {
+    void HM07_마감일에_null을_보내면_해제되고_배정일은_유지된다() {
         Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), LocalDateTime.of(2026, 10, 20, 18, 0));
-        stubVisibleCount(TODAY, 0, 3);
 
-        taskService.updateTask(1L, 10L, request(r -> {
-            r.setDate(null);
-            r.setDueDate(null);
-        }));
+        taskService.updateTask(1L, 10L, request(r -> r.setDueDate(null)));
 
-        assertThat(task.getDate()).isNull();
+        assertThat(task.getDate()).isEqualTo(LocalDate.of(2026, 10, 18));
         assertThat(task.getDueDate()).isNull();
+    }
+
+    @Test
+    void HM07_배정일은_필수라_null을_보내면_400이고_값은_그대로다() {
+        Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), null);
+
+        assertBadRequest(() -> taskService.updateTask(1L, 10L, request(r -> r.setDate(null))));
+        assertThat(task.getDate()).isEqualTo(LocalDate.of(2026, 10, 18));
     }
 
     @Test
     void HM07_배정일을_옮길_날의_목록이_20개면_TASK_LIMIT_EXCEEDED() {
         Task task = ownedTask(10L, LocalDate.of(2026, 10, 25), null);
-        stubVisibleCount(LocalDate.of(2026, 10, 22), 10, 10);
+        stubCount(LocalDate.of(2026, 10, 22), 20);
 
         assertThatThrownBy(() -> taskService.updateTask(1L, 10L, request(r -> r.setDate("2026-10-22"))))
                 .isInstanceOf(CustomException.class)
@@ -220,10 +239,9 @@ class TaskServiceTest {
     }
 
     @Test
-    void HM07_이미_그날_보이던_할_일은_자기_자신을_빼고_센다() {
-        // 10/18 배정 → 10/22에도 이월되어 보이는 중. 10/22로 옮겨도 그날 개수는 늘지 않는다.
-        Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), null);
-        stubVisibleCount(LocalDate.of(2026, 10, 22), 0, 20);
+    void HM07_배정일을_옮기면_옮긴_날로_바뀐다() {
+        Task task = ownedTask(10L, LocalDate.of(2026, 10, 25), null);
+        stubCount(LocalDate.of(2026, 10, 22), 19);
 
         taskService.updateTask(1L, 10L, request(r -> r.setDate("2026-10-22")));
 
@@ -231,14 +249,24 @@ class TaskServiceTest {
     }
 
     @Test
-    void HM07_완료된_할_일은_배정일을_옮겨도_개수를_검사하지_않는다() {
+    void HM07_같은_배정일을_보내면_개수를_검사하지_않는다() {
+        Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), null);
+
+        taskService.updateTask(1L, 10L, request(r -> r.setDate("2026-10-18")));
+
+        assertThat(task.getDate()).isEqualTo(LocalDate.of(2026, 10, 18));
+        verify(taskRepository, never()).countByUserIdAndDate(any(), any());
+    }
+
+    @Test
+    void HM07_완료된_할_일도_옮긴_날_목록에_들어가므로_개수를_검사한다() {
         Task task = ownedTask(10L, LocalDate.of(2026, 10, 18), null);
         task.complete(TODAY);
+        stubCount(LocalDate.of(2026, 10, 22), 20);
 
-        taskService.updateTask(1L, 10L, request(r -> r.setDate("2026-10-22")));
-
-        assertThat(task.getDate()).isEqualTo(LocalDate.of(2026, 10, 22));
-        verify(taskRepository, never()).countByUserIdAndCompletedDate(any(), any());
+        assertThatThrownBy(() -> taskService.updateTask(1L, 10L, request(r -> r.setDate("2026-10-22"))))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.TASK_LIMIT_EXCEEDED));
     }
 
     @Test
@@ -281,11 +309,11 @@ class TaskServiceTest {
     // ---- 메모 (D-106, record 도메인에서 호출) ----
 
     @Test
-    void RC12_그날_보이는_할_일의_메모를_전체_교체한다() {
+    void RC12_그날_추가한_할_일의_메모를_전체_교체한다() {
         Task withMemo = visibleTask(10L, "예전 메모");
         Task other = visibleTask(11L, "지워질 메모");
         Task blank = visibleTask(12L, null);
-        stubVisibleTasks(List.of(withMemo), List.of(other, blank));
+        given(taskRepository.findAllByUserIdAndDateOrderByIdAsc(1L, TODAY)).willReturn(List.of(withMemo, other, blank));
 
         taskService.replaceMemosOn(1L, TODAY, java.util.Map.of(10L, "새 메모", 12L, "   "));
 
@@ -295,9 +323,9 @@ class TaskServiceTest {
     }
 
     @Test
-    void RC12_그날_보이지_않는_할_일의_메모는_TASK_NOT_FOUND이고_아무것도_바꾸지_않는다() {
+    void RC12_그날_할_일이_아닌_ID의_메모는_TASK_NOT_FOUND이고_아무것도_바꾸지_않는다() {
         Task visible = visibleTask(10L, "그대로");
-        stubVisibleTasks(List.of(), List.of(visible));
+        given(taskRepository.findAllByUserIdAndDateOrderByIdAsc(1L, TODAY)).willReturn(List.of(visible));
 
         assertThatThrownBy(() -> taskService.replaceMemosOn(1L, TODAY, java.util.Map.of(99L, "메모")))
                 .isInstanceOf(CustomException.class)
@@ -307,14 +335,10 @@ class TaskServiceTest {
 
     @Test
     void HM10_메모가_있는_할_일_수를_센다() {
-        stubVisibleTasks(List.of(visibleTask(10L, "메모")), List.of(visibleTask(11L, null), visibleTask(12L, "메모")));
+        given(taskRepository.findAllByUserIdAndDateOrderByIdAsc(1L, TODAY))
+                .willReturn(List.of(visibleTask(10L, "메모"), visibleTask(11L, null), visibleTask(12L, "메모")));
 
         assertThat(taskService.countMemosOn(1L, TODAY)).isEqualTo(2);
-    }
-
-    private void stubVisibleTasks(List<Task> completed, List<Task> incomplete) {
-        given(taskRepository.findAllByUserIdAndCompletedDateOrderByIdAsc(1L, TODAY)).willReturn(completed);
-        given(taskRepository.findAllIncompleteVisibleOn(1L, TODAY, TODAY.plusDays(1).atStartOfDay())).willReturn(incomplete);
     }
 
     private Task visibleTask(Long id, String memo) {
@@ -324,10 +348,8 @@ class TaskServiceTest {
         return task;
     }
 
-    private void stubVisibleCount(LocalDate day, long completed, long incomplete) {
-        given(taskRepository.countByUserIdAndCompletedDate(1L, day)).willReturn(completed);
-        given(taskRepository.countIncompleteVisibleOn(eq(1L), eq(day), eq(day.plusDays(1).atStartOfDay())))
-                .willReturn(incomplete);
+    private void stubCount(LocalDate day, long count) {
+        given(taskRepository.countByUserIdAndDate(1L, day)).willReturn(count);
     }
 
     private Task ownedTask(Long id, LocalDate date, LocalDateTime dueDate) {

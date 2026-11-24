@@ -26,10 +26,10 @@ class AiResponseValidatorTest {
             new WeeklyInsightInput.WeekStats(12, 9), new WeeklyInsightInput.WeekStats(10, 6), false,
             List.of(
                     new WeeklyInsightInput.DayInput(LocalDate.of(2026, 10, 21),
-                            List.of(new AiTaskInput("보고서", true, "구조를 바꿨다")), List.of()),
+                            List.of(new AiTaskInput("보고서", true, "구조를 바꿨다")), List.of(), "배운 점을 정리했다"),
                     new WeeklyInsightInput.DayInput(LocalDate.of(2026, 10, 22),
                             List.of(new AiTaskInput("회의", false, null)),
-                            List.of(new WeeklyInsightInput.AnswerInput("질문", "답변")))));
+                            List.of(new WeeklyInsightInput.AnswerInput("질문", "답변")), null)));
 
     // ---- 질문 (6.5) ----
 
@@ -87,9 +87,31 @@ class AiResponseValidatorTest {
         // 그날 답변이 없는데 QUESTION_ANSWER
         assertInvalid(() -> validator.weeklyInsight(json(insight(
                 "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"QUESTION_ANSWER\"}", "행동")), input));
-        // 알 수 없는 종류(회고 등)
+        // 그날 회고가 없는데 REFLECTION
         assertInvalid(() -> validator.weeklyInsight(json(insight(
-                "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"REFLECTION\"}", "행동")), input));
+                "제목", "소제목", "{\"date\":\"2026-10-22\",\"type\":\"REFLECTION\"}", "행동")), input));
+        // 알 수 없는 종류
+        assertInvalid(() -> validator.weeklyInsight(json(insight(
+                "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"DIARY\"}", "행동")), input));
+    }
+
+    @Test
+    void IN10_회고가_있는_날은_REFLECTION_근거를_허용한다() {
+        WeeklyInsightResult result = validator.weeklyInsight(json(insight(
+                "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"REFLECTION\"}", "행동")), input);
+
+        assertThat(result.strengths().get(0).evidences().get(0).type()).isEqualTo(AiEvidenceType.REFLECTION);
+    }
+
+    @Test
+    void IN10_공백뿐인_회고는_근거로_인정하지_않는다() {
+        WeeklyInsightInput blank = new WeeklyInsightInput(input.weekStart(), input.weekEnd(), input.weekLabel(),
+                input.stats(), input.previousWeekStats(), false,
+                List.of(new WeeklyInsightInput.DayInput(LocalDate.of(2026, 10, 21),
+                        List.of(new AiTaskInput("보고서", true, null)), List.of(), "   ")));
+
+        assertInvalid(() -> validator.weeklyInsight(json(insight(
+                "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"REFLECTION\"}", "행동")), blank));
     }
 
     @Test
