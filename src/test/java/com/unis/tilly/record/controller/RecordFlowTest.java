@@ -357,17 +357,17 @@ class RecordFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.completedAt").value("2026-10-21T10:00:00"))
-                .andExpect(jsonPath("$.data.level").value(2));   // 1일
+                .andExpect(jsonPath("$.data.level").value(2));   // 1일 → 2
 
         clock.setToday(LocalDate.of(2026, 10, 22));
         complete(me, "2026-10-21") // 다시 완료: 최초 시각·레벨 유지
                 .andExpect(jsonPath("$.data.completedAt").value("2026-10-21T10:00:00"))
                 .andExpect(jsonPath("$.data.level").value(2));
-        complete(me, "2026-10-22").andExpect(jsonPath("$.data.level").value(2)); // 2일
-        complete(me, "2026-10-23").andExpect(jsonPath("$.data.level").value(3)); // 3일
+        complete(me, "2026-10-22").andExpect(jsonPath("$.data.level").value(3)); // 2일 → 3
+        complete(me, "2026-10-23").andExpect(jsonPath("$.data.level").value(4)); // 3일 → 4
 
         mockMvc.perform(get("/api/users/me").header("Authorization", me.bearer()))
-                .andExpect(jsonPath("$.data.level").value(3));
+                .andExpect(jsonPath("$.data.level").value(4));
         summary(me, "2026-10-21")
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.completedAt").value("2026-10-21T10:00:00"));

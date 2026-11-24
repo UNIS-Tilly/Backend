@@ -106,7 +106,7 @@ public class RecordService {
 
         // D-101: 날짜가 처음 COMPLETED가 될 때만 누적 일수로 레벨을 다시 계산한다
         int level = firstCompletion
-                ? userService.raiseLevel(userId, recordRepository.countByUserIdAndStatus(userId, RecordStatus.COMPLETED))
+                ? userService.updateLevel(userId, recordRepository.countByUserIdAndStatus(userId, RecordStatus.COMPLETED))
                 : userService.getLevel(userId);
 
         return new CompleteResult(date, record.getStatus(), record.getCompletedAt(), level);

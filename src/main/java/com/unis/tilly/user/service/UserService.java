@@ -26,14 +26,12 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class UserService {
 
-    // 나이 범위 [임시] (API_SPEC 4.2, 2026-11-12 사용자 결정 14~100)
-    // TODO(NOTICE-043): 기획 확정 시 교체
+    // 나이 범위 [임시] (API_SPEC 4.2, 2026-11-12 사용자 결정 14~100, 기획 확정 시 교체: NOTICE-043)
     static final int MIN_AGE = 14;
     static final int MAX_AGE = 100;
 
-    // 성장 레벨 구간 [임시] (D-101, API_SPEC 4.6): 인덱스+1 = 레벨, 값 = 필요한 누적 COMPLETED 일수(이상)
-    // TODO(NOTICE-043): 기획 확정 시 교체
-    static final int[] LEVEL_THRESHOLDS = {0, 1, 3, 7, 14, 30, 60, 100, 150};
+    // 성장 레벨 1~9 순환 (D-143, API_SPEC 4.6)
+    static final int LEVEL_COUNT = 9;
 
     private final UserRepository userRepository;
     private final UserCompetencyRepository userCompetencyRepository;
@@ -74,11 +72,11 @@ public class UserService {
         return new UserProfile(user, sorted(command.competencies()));
     }
 
-    // 4.6 성장 레벨 (D-101): record 도메인이 날짜가 처음 COMPLETED가 될 때 누적 일수로 호출한다.
+    // 4.6 성장 레벨 (D-143): record 도메인이 날짜가 처음 COMPLETED가 될 때 누적 일수로 호출한다.
     @Transactional
-    public int raiseLevel(Long userId, long completedDays) {
+    public int updateLevel(Long userId, long completedDays) {
         User user = findById(userId);
-        user.raiseLevel(levelFor(completedDays));
+        user.changeLevel(levelFor(completedDays));
         return user.getLevel();
     }
 
@@ -86,15 +84,9 @@ public class UserService {
         return findById(userId).getLevel();
     }
 
-    // 누적 COMPLETED 일수 → 레벨 1~9
+    // 퇴근 완료한 서로 다른 날 수 → 레벨 1~9 순환 (0일 = 1, 1일 = 2, … 8일 = 9, 9일 = 1)
     static int levelFor(long completedDays) {
-        int level = 1;
-        for (int i = 0; i < LEVEL_THRESHOLDS.length; i++) {
-            if (completedDays >= LEVEL_THRESHOLDS[i]) {
-                level = i + 1;
-            }
-        }
-        return level;
+        return (int) (completedDays % LEVEL_COUNT) + 1;
     }
 
     // 4.4
@@ -124,8 +116,7 @@ public class UserService {
         }
     }
 
-    // D-98: 공통 역량 1개 이상, 희망 직군이 있으면 그 직군 역량 2개 이상, 없으면 직군 역량 선택 불가.
-    // 최대 선택 개수는 [미확정] — 검사하지 않음 (TODO(NOTICE-043))
+    // D-98, D-144: 공통 역량 1~3개, 희망 직군이 있으면 그 직군 역량 2~5개, 없으면 직군 역량 선택 불가.
     private void validateCompetencies(JobGroup targetJobGroup, List<Competency> competencies) {
         if (competencies.stream().anyMatch(Objects::isNull)) {
             throw new CustomException(ErrorCode.BAD_REQUEST, "역량 값이 올바르지 않습니다.");
@@ -142,6 +133,9 @@ public class UserService {
         if (commonCount < Competency.COMMON_MIN) {
             throw invalidCompetency("공통 역량을 " + Competency.COMMON_MIN + "개 이상 선택해야 합니다.");
         }
+        if (commonCount > Competency.COMMON_MAX) {
+            throw invalidCompetency("공통 역량은 최대 " + Competency.COMMON_MAX + "개까지 선택할 수 있습니다.");
+        }
         if (targetJobGroup == null) {
             if (!jobCompetencies.isEmpty()) {
                 throw invalidCompetency("희망 직군을 선택하지 않으면 직군 역량을 선택할 수 없습니다.");
@@ -153,6 +147,9 @@ public class UserService {
         }
         if (jobCompetencies.size() < Competency.JOB_MIN) {
             throw invalidCompetency("희망 직군 역량을 " + Competency.JOB_MIN + "개 이상 선택해야 합니다.");
+        }
+        if (jobCompetencies.size() > Competency.JOB_MAX) {
+            throw invalidCompetency("희망 직군 역량은 최대 " + Competency.JOB_MAX + "개까지 선택할 수 있습니다.");
         }
     }
 

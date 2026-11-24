@@ -211,7 +211,9 @@ class UserFlowTest {
                 .andExpect(jsonPath("$.data.competencies[0].label").value("파트너십"))
                 .andExpect(jsonPath("$.data.competencies[0].description").isNotEmpty())
                 .andExpect(jsonPath("$.data.selectionRules.commonMin").value(1))
-                .andExpect(jsonPath("$.data.selectionRules.jobMin").value(2));
+                .andExpect(jsonPath("$.data.selectionRules.commonMax").value(3))
+                .andExpect(jsonPath("$.data.selectionRules.jobMin").value(2))
+                .andExpect(jsonPath("$.data.selectionRules.jobMax").value(5));
     }
 
     @Test

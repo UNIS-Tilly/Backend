@@ -251,7 +251,7 @@ class RecordServiceTest {
         given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
         given(recordRepository.save(any(DailyRecord.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
-        given(userService.raiseLevel(anyLong(), anyLong())).willReturn(2);
+        given(userService.updateLevel(anyLong(), anyLong())).willReturn(2);
 
         recordService.complete(1L, "2026-10-21", reflection("퇴근 회고"));
 
@@ -288,7 +288,7 @@ class RecordServiceTest {
         given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
         given(recordRepository.save(any(DailyRecord.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(recordRepository.countByUserIdAndStatus(1L, RecordStatus.COMPLETED)).willReturn(3L);
-        given(userService.raiseLevel(1L, 3L)).willReturn(3);
+        given(userService.updateLevel(1L, 3L)).willReturn(3);
 
         RecordService.CompleteResult result = recordService.complete(1L, "2026-10-21", emptyContent());
 
@@ -307,7 +307,7 @@ class RecordServiceTest {
 
         assertThat(result.completedAt()).isEqualTo(LocalDateTime.of(2026, 10, 21, 17, 0));
         assertThat(result.level()).isEqualTo(2);
-        verify(userService, never()).raiseLevel(anyLong(), anyLong());
+        verify(userService, never()).updateLevel(anyLong(), anyLong());
     }
 
     private DailyRecord record(RecordStatus status) {

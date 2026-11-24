@@ -171,6 +171,34 @@ class UserServiceTest {
     }
 
     @Test
+    void 공통_역량은_최대_3개까지이고_4개면_INVALID_COMPETENCY_SELECTION() {
+        // D-144
+        assertInvalidCompetency(command("닉네임", null,
+                PARTNERSHIP, RESILIENCE, Competency.CUSTOMER_FOCUS, Competency.VISION));
+    }
+
+    @Test
+    void 공통_역량_3개와_직군_역량_5개는_경계값으로_저장된다() {
+        // D-144
+        givenUser();
+
+        UserService.UserProfile profile = userService.updateProfile(1L, command("닉네임", JobGroup.IT_DEVELOPMENT,
+                PARTNERSHIP, RESILIENCE, Competency.CUSTOMER_FOCUS,
+                DEV_PROBLEM_SOLVING, Competency.DEV_PROGRAMMING, Competency.DEV_DATA_ANALYSIS,
+                Competency.DEV_TEAMWORK, Competency.DEV_USER_CENTERED));
+
+        assertThat(profile.competencies()).hasSize(8);
+    }
+
+    @Test
+    void 희망_직군_역량은_최대_5개까지이고_6개면_INVALID_COMPETENCY_SELECTION() {
+        // D-144
+        assertInvalidCompetency(command("닉네임", JobGroup.IT_DEVELOPMENT, PARTNERSHIP,
+                DEV_PROBLEM_SOLVING, Competency.DEV_PROGRAMMING, Competency.DEV_DATA_ANALYSIS,
+                Competency.DEV_TEAMWORK, Competency.DEV_USER_CENTERED, Competency.DEV_CREATIVITY));
+    }
+
+    @Test
     void 희망_직군이_아닌_직군_역량을_고르면_INVALID_COMPETENCY_SELECTION() {
         assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, PARTNERSHIP, DSN_COMMUNICATION, DSN_TOOL, DEV_PROBLEM_SOLVING));
     }
@@ -199,26 +227,27 @@ class UserServiceTest {
                 "닉네임", null, 101, null, null, List.of(PARTNERSHIP))));
     }
 
-    // ---- 성장 레벨 (4.6, D-101) ----
+    // ---- 성장 레벨 (4.6, D-143) ----
 
     @Test
-    void RC13_누적_완료_일수로_레벨_구간을_계산한다() {
+    void RC13_퇴근_완료한_날이_하루_늘_때마다_레벨이_1씩_오르고_9_다음은_1이다() {
         assertThat(UserService.levelFor(0)).isEqualTo(1);
         assertThat(UserService.levelFor(1)).isEqualTo(2);
-        assertThat(UserService.levelFor(2)).isEqualTo(2);
-        assertThat(UserService.levelFor(3)).isEqualTo(3);
-        assertThat(UserService.levelFor(149)).isEqualTo(8);
-        assertThat(UserService.levelFor(150)).isEqualTo(9);
-        assertThat(UserService.levelFor(1000)).isEqualTo(9);
+        assertThat(UserService.levelFor(2)).isEqualTo(3);
+        assertThat(UserService.levelFor(8)).isEqualTo(9);
+        assertThat(UserService.levelFor(9)).isEqualTo(1);   // 순환
+        assertThat(UserService.levelFor(10)).isEqualTo(2);
+        assertThat(UserService.levelFor(17)).isEqualTo(9);
+        assertThat(UserService.levelFor(18)).isEqualTo(1);
     }
 
     @Test
-    void RC13_레벨은_올라가기만_하고_내려가지_않는다() {
+    void RC13_레벨을_누적_일수로_다시_계산해_저장한다() {
         User user = givenUser();
 
-        assertThat(userService.raiseLevel(1L, 7)).isEqualTo(4);
-        assertThat(userService.raiseLevel(1L, 1)).isEqualTo(4);
-        assertThat(user.getLevel()).isEqualTo(4);
+        assertThat(userService.updateLevel(1L, 7)).isEqualTo(8);
+        assertThat(userService.updateLevel(1L, 9)).isEqualTo(1);   // 9 다음은 다시 1
+        assertThat(user.getLevel()).isEqualTo(1);
     }
 
     // ---- 퇴근 시간 (4.4) ----
