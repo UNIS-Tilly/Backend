@@ -45,6 +45,10 @@ dependencies {
 
     runtimeOnly 'com.mysql:mysql-connector-j'
 
+    // 자동 질문 스케줄러의 다중 인스턴스 중복 실행 방지 (D-138, 사용자 승인 2026-11-24)
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:7.12.0'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.12.0'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 

@@ -15,12 +15,12 @@ public record ProfileUpdateRequest(
         @NotBlank(message = "닉네임은 비워둘 수 없습니다.")
         @Size(min = 2, max = 10, message = "닉네임은 2~10자여야 합니다.") String nickname,
         Gender gender,
-        Integer birthYear,
+        Integer age,
         JobGroup currentJobGroup,
         JobGroup targetJobGroup,
         List<Competency> competencies) {
 
     public UserService.ProfileCommand toCommand() {
-        return new UserService.ProfileCommand(nickname, gender, birthYear, currentJobGroup, targetJobGroup, competencies);
+        return new UserService.ProfileCommand(nickname, gender, age, currentJobGroup, targetJobGroup, competencies);
     }
 }

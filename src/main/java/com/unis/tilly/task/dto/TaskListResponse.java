@@ -10,10 +10,10 @@ public record TaskListResponse(String date, int completedCount, int totalCount,
 
     public static TaskListResponse from(TaskService.DailyTasks dailyTasks) {
         List<TaskItemResponse> completed = dailyTasks.completed().stream()
-                .map(TaskItemResponse::completedOn)
+                .map(task -> TaskItemResponse.from(task, dailyTasks.today()))
                 .toList();
         List<TaskItemResponse> incomplete = dailyTasks.incomplete().stream()
-                .map(task -> TaskItemResponse.incompleteOn(task, dailyTasks.day()))
+                .map(task -> TaskItemResponse.from(task, dailyTasks.today()))
                 .toList();
         return new TaskListResponse(dailyTasks.day().toString(), completed.size(),
                 completed.size() + incomplete.size(), completed, incomplete);

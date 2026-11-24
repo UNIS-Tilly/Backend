@@ -26,5 +26,4 @@ public record SuccessMessage(String message) {
 
     // Insight
     public static final SuccessMessage INSIGHT_ANALYSIS_REQUESTED = new SuccessMessage("분석을 요청했습니다.");
-    public static final SuccessMessage INSIGHT_ACTION_REFLECTED = new SuccessMessage("다음 주 월요일 체크리스트에 반영되었습니다.");
 }

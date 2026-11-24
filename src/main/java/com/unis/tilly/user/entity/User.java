@@ -44,8 +44,8 @@ public class User extends BaseEntity {
     @Column(length = 20)
     private Gender gender;
 
-    @Column(name = "birth_year")
-    private Integer birthYear;
+    // 입력받은 나이를 그대로 저장한다(해가 바뀌어도 자동으로 늘지 않음)
+    private Integer age;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "current_job_group", length = 30)
@@ -71,31 +71,29 @@ public class User extends BaseEntity {
     }
 
     public User(String email, String nickname, SocialProvider provider, String providerUserId,
-                Gender gender, Integer birthYear) {
+                Gender gender, Integer age) {
         this.email = email;
         this.nickname = nickname;
         this.provider = provider;
         this.providerUserId = providerUserId;
         this.gender = gender;
-        this.birthYear = birthYear;
+        this.age = age;
         this.level = INITIAL_LEVEL;
     }
 
     // 4.2 프로필 전체 교체 (역량은 user_competencies에서 따로 교체)
-    public void changeProfile(String nickname, Gender gender, Integer birthYear,
+    public void changeProfile(String nickname, Gender gender, Integer age,
                               JobGroup currentJobGroup, JobGroup targetJobGroup) {
         this.nickname = nickname;
         this.gender = gender;
-        this.birthYear = birthYear;
+        this.age = age;
         this.currentJobGroup = currentJobGroup;
         this.targetJobGroup = targetJobGroup;
     }
 
-    // D-101: 레벨은 내려가지 않는다
-    public void raiseLevel(int newLevel) {
-        if (newLevel > level) {
-            this.level = newLevel;
-        }
+    // D-143: 레벨은 퇴근 완료한 날이 늘 때마다 1씩 오르고 9 다음은 1로 돌아간다(순환). 값은 UserService가 계산한다
+    public void changeLevel(int level) {
+        this.level = level;
     }
 
     public void changeWorkEndTime(LocalTime workEndTime) {

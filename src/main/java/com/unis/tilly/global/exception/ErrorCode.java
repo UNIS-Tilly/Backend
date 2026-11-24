@@ -44,11 +44,9 @@ public enum ErrorCode {
 
     // Insight
     INSIGHT_NOT_FOUND(404, "존재하지 않는 인사이트입니다."),
-    ACTION_NOT_FOUND(404, "존재하지 않는 추천 행동입니다."),
-    INSIGHT_WEEK_NOT_ENDED(422, "아직 끝나지 않은 주입니다."),
+    INSIGHT_NOT_REQUESTABLE(422, "지금은 인사이트 분석을 요청할 수 없습니다."),
     INSUFFICIENT_RECORDS(422, "분석할 수 있는 기록이 부족합니다."),
-    INSIGHT_ALREADY_PUBLISHED(409, "이미 발행된 주입니다."),
-    NO_ACTION_SELECTED(400, "반영할 행동을 선택하지 않았습니다.");
+    INSIGHT_ALREADY_PUBLISHED(409, "이미 발행된 주입니다.");
 
     private final int status;
     private final String message;
