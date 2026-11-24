@@ -89,6 +89,11 @@ public class UserService {
         return (int) (completedDays % LEVEL_COUNT) + 1;
     }
 
+    // 6.6 자동 질문 스케줄러용: 퇴근 시간이 workEndTime(분 단위)인 사용자 ID
+    public List<Long> findUserIdsByWorkEndTime(LocalTime workEndTime) {
+        return userRepository.findIdsByWorkEndTime(workEndTime);
+    }
+
     // 4.4
     @Transactional
     public User updateWorkEndTime(Long userId, LocalTime workEndTime) {

@@ -2,6 +2,7 @@ package com.unis.tilly.task.service;
 
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
+import com.unis.tilly.insight.service.InsightLockService;
 import com.unis.tilly.task.dto.TaskUpdateRequest;
 import com.unis.tilly.task.entity.Task;
 import com.unis.tilly.task.repository.TaskRepository;
@@ -35,13 +36,15 @@ class TaskServiceTest {
 
     @Mock
     private TaskRepository taskRepository;
+    @Mock
+    private InsightLockService insightLockService;
 
     private TaskService taskService;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(TODAY.atTime(10, 0).atZone(SEOUL).toInstant(), SEOUL);
-        taskService = new TaskService(taskRepository, clock);
+        taskService = new TaskService(taskRepository, insightLockService, clock);
     }
 
     // ---- 목록 (HM-02, HM-03) ----
@@ -283,6 +286,45 @@ class TaskServiceTest {
         assertThatThrownBy(() -> taskService.updateTask(2L, 10L, request(r -> r.setTitle("새제목"))))
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.TASK_NOT_FOUND));
+    }
+
+    // ---- 잠금 (API_SPEC 1.5, D-130, D-137) ----
+
+    @Test
+    void IN03_배정일이_잠긴_주면_할_일을_추가할_수_없다() {
+        given(insightLockService.isLocked(1L, LocalDate.of(2026, 10, 22))).willReturn(true);
+
+        assertLocked(() -> taskService.createTask(1L, "제목", "2026-10-22", null));
+        verify(taskRepository, never()).save(any());
+    }
+
+    @Test
+    void IN03_잠긴_주의_할_일은_수정_완료_삭제할_수_없다() {
+        Task task = ownedTask(10L, LocalDate.of(2026, 10, 20), null);
+        given(insightLockService.isLocked(1L, LocalDate.of(2026, 10, 20))).willReturn(true);
+
+        assertLocked(() -> taskService.updateTask(1L, 10L, request(r -> r.setTitle("새제목"))));
+        assertLocked(() -> taskService.updateTask(1L, 10L, request(r -> r.setCompleted(true))));
+        assertLocked(() -> taskService.deleteTask(1L, 10L));
+        assertThat(task.getTitle()).isEqualTo("원래제목");
+        assertThat(task.isCompleted()).isFalse();
+        verify(taskRepository, never()).delete(any());
+    }
+
+    @Test
+    void IN03_잠긴_주로_배정일을_옮길_수_없다() {
+        Task task = ownedTask(10L, LocalDate.of(2026, 10, 25), null);
+        given(insightLockService.isLocked(1L, LocalDate.of(2026, 10, 25))).willReturn(false);   // 원래 배정일의 주는 잠기지 않음
+        given(insightLockService.isLocked(1L, LocalDate.of(2026, 10, 20))).willReturn(true);    // 옮길 주가 잠김
+
+        assertLocked(() -> taskService.updateTask(1L, 10L, request(r -> r.setDate("2026-10-20"))));
+        assertThat(task.getDate()).isEqualTo(LocalDate.of(2026, 10, 25));
+    }
+
+    private void assertLocked(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {
+        assertThatThrownBy(callable)
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.RECORD_LOCKED));
     }
 
     // ---- 삭제 (HM-08) ----

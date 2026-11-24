@@ -50,6 +50,12 @@
                 "type"
               ]
             }
+          },
+          "competencyCode": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -100,11 +106,21 @@
           },
           "action": {
             "type": "string"
+          },
+          "starPart": {
+            "type": "string",
+            "enum": [
+              "S",
+              "T",
+              "A",
+              "R"
+            ]
           }
         },
         "required": [
           "title",
           "description",
+          "starPart",
           "evidences",
           "action"
         ]

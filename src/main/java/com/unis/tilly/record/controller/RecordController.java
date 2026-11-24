@@ -7,9 +7,12 @@ import com.unis.tilly.record.dto.RecordCompleteRequest;
 import com.unis.tilly.record.dto.RecordCompleteResponse;
 import com.unis.tilly.record.dto.RecordDraftRequest;
 import com.unis.tilly.record.dto.RecordDraftResponse;
+import com.unis.tilly.record.dto.RecordQuestionGenerateResponse;
+import com.unis.tilly.record.dto.RecordQuestionRequest;
 import com.unis.tilly.record.dto.RecordQuestionsResponse;
 import com.unis.tilly.record.dto.RecordReflectionResponse;
 import com.unis.tilly.record.dto.RecordSummaryResponse;
+import com.unis.tilly.record.service.RecordQuestionService;
 import com.unis.tilly.record.service.RecordService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class RecordController {
 
     private final RecordService recordService;
+    private final RecordQuestionService recordQuestionService;
 
     // 6.1 HM-10, HM-11
     @GetMapping("/{date}/summary")
@@ -43,6 +47,18 @@ public class RecordController {
                                                              @PathVariable String date) {
         return ApiResponse.success(SuccessMessage.OK.message(),
                 RecordQuestionsResponse.from(recordService.getQuestions(user.userId(), date)));
+    }
+
+    // 6.5 RC-06 질문 받기: 현재 입력을 먼저 저장하고, 질문이 이미 있으면 그대로, 없으면 AI로 생성
+    @PostMapping("/{date}/questions")
+    public ApiResponse<RecordQuestionGenerateResponse> generateQuestions(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String date,
+            @RequestBody @Valid RecordQuestionRequest request) {
+        RecordQuestionService.QuestionResult result =
+                recordQuestionService.getOrGenerate(user.userId(), date, request.toContent());
+        return ApiResponse.success(SuccessMessage.QUESTIONS_GENERATED.message(),
+                RecordQuestionGenerateResponse.from(result));
     }
 
     // 6.7 하루 회고 조회

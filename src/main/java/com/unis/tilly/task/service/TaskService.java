@@ -2,6 +2,7 @@ package com.unis.tilly.task.service;
 
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
+import com.unis.tilly.insight.service.InsightLockService;
 import com.unis.tilly.task.dto.TaskUpdateRequest;
 import com.unis.tilly.task.entity.Task;
 import com.unis.tilly.task.repository.TaskRepository;
@@ -23,9 +24,8 @@ import java.util.stream.Collectors;
 
 // 5.1~5.5, HM-02~08, RC-03 (D-102~D-106). 2026-11-24 변경: 할 일은 배정일 하루에만 노출(이월 없음),
 // 마감일은 "오늘 기준 남은 일수" 표시용이고 노출에는 영향이 없다. 배정일은 필수(생략 시 오늘).
-// 기록 잠금(API_SPEC 1.5, 409 RECORD_LOCKED)은 insight 도메인이 아직 없어 이번 단위에는 적용하지 않는다.
-// insight 도메인 구현 시 insight 서비스의 잠금 조회로 추가한다:
-// 배정일 또는 완료일이 발행된 주에 속하면 잠금 (Q-12 ① 승인).
+// 기록 잠금(API_SPEC 1.5, D-130, D-137): 할 일의 배정일이 속한 주의 인사이트가 GENERATING·PUBLISHED이면
+// 수정·삭제·완료 토글·추가·배정일 이동이 409 RECORD_LOCKED. 배정일을 옮길 때는 옮기기 전·후 날짜 모두 검사한다.
 @Service
 @RequiredArgsConstructor
 public class TaskService {
@@ -38,6 +38,7 @@ public class TaskService {
             DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm[:ss]").withResolverStyle(ResolverStyle.STRICT);
 
     private final TaskRepository taskRepository;
+    private final InsightLockService insightLockService;
     private final Clock clock;
 
     // HM-02, HM-03: date를 생략하면 오늘. 그날 추가한 할 일만 돌려주고 완료 여부로 나눈다
@@ -47,6 +48,11 @@ public class TaskService {
         List<Task> completed = tasks.stream().filter(Task::isCompleted).toList();
         List<Task> incomplete = tasks.stream().filter(task -> !task.isCompleted()).toList();
         return new DailyTasks(day, today(), completed, incomplete);
+    }
+
+    // 다른 도메인(insight)용: 기간(배정일) 안의 할 일 전체
+    public List<Task> getTasksBetween(Long userId, LocalDate from, LocalDate to) {
+        return taskRepository.findAllByUserIdAndDateBetweenOrderByDateAscIdAsc(userId, from, to);
     }
 
     // 다른 도메인(record)용: 그날(배정일) 추가한 할 일 전체 (완료 + 미완료, 5.1 규칙)
@@ -82,6 +88,7 @@ public class TaskService {
         // 배정일을 생략하면 오늘
         LocalDate date = dateText == null ? today() : parseDate(dateText);
         LocalDateTime dueDate = parseNullableDueDate(dueDateText);
+        checkNotLocked(userId, date);
 
         // 그 배정일의 목록(완료 포함)이 이미 가득 찼으면 거절한다.
         if (taskRepository.countByUserIdAndDate(userId, date) >= DAILY_LIMIT) {
@@ -95,6 +102,7 @@ public class TaskService {
     @Transactional
     public Task updateTask(Long userId, Long taskId, TaskUpdateRequest request) {
         Task task = findOwnedTask(userId, taskId);
+        checkNotLocked(userId, task.getDate());
 
         if (request.title() != null) {
             task.changeTitle(validateTitle(request.title()));
@@ -116,6 +124,7 @@ public class TaskService {
             }
             LocalDate newDate = parseDate(request.date());
             if (!newDate.equals(task.getDate())) {
+                checkNotLocked(userId, newDate);
                 // 옮긴 날의 목록(완료 포함)이 가득 찼으면 거절한다.
                 if (taskRepository.countByUserIdAndDate(userId, newDate) >= DAILY_LIMIT) {
                     throw new CustomException(ErrorCode.TASK_LIMIT_EXCEEDED);
@@ -130,7 +139,14 @@ public class TaskService {
     @Transactional
     public void deleteTask(Long userId, Long taskId) {
         Task task = findOwnedTask(userId, taskId);
+        checkNotLocked(userId, task.getDate());
         taskRepository.delete(task);
+    }
+
+    private void checkNotLocked(Long userId, LocalDate date) {
+        if (insightLockService.isLocked(userId, date)) {
+            throw new CustomException(ErrorCode.RECORD_LOCKED);
+        }
     }
 
     private LocalDate today() {

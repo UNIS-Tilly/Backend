@@ -5,6 +5,7 @@
 - recordedDays: 퇴근 완료한 날 수
 - insufficientContent: 메모·답변·회고가 하나도 없으면 true
 - days: 날짜별 기록 (tasks: title·completed·memo, answers: question·answer, reflection: 그날 하루 회고, 없으면 null)
+- profile: 강점 판단 기준 (targetJobGroupCode·targetJobGroupLabel: 희망 직무, 없으면 null / competencies: 사용자가 선택한 역량의 code·label·definition)
 
 <records>
 {{records}}
