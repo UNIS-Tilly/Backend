@@ -13,6 +13,9 @@ public interface DailyRecordRepository extends JpaRepository<DailyRecord, Long> 
 
     Optional<DailyRecord> findByUserIdAndDate(Long userId, LocalDate date);
 
+    // 알림(D-152): 오늘 기록이 퇴근 완료인지
+    boolean existsByUserIdAndDateAndStatus(Long userId, LocalDate date, RecordStatus status);
+
     // D-101 성장 레벨: COMPLETED 기록 누적 일수 (유니크 (user_id, date)라 행 수 = 날짜 수)
     long countByUserIdAndStatus(Long userId, RecordStatus status);
 

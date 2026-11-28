@@ -27,3 +27,8 @@ ai:
 record:
   auto-question:
     enabled: false
+
+# 테스트에서는 알림 스케줄러를 켜지 않는다 (생성 로직은 시각을 직접 넘겨 테스트)
+notification:
+  scheduler:
+    enabled: false
