@@ -36,11 +36,11 @@ public class AiResponseValidator {
     static final int TAGS_MAX = 5;
     private static final Pattern NUMBER = Pattern.compile("\\d+");
 
-    // 6.5: 질문 1~3개, 빈 문장 불가
+    // 6.5: 질문 0~3개(구체화할 질문이 없으면 빈 배열), 빈 문장 불가
     public List<String> questions(JsonNode root) {
         JsonNode array = root.path("questions");
-        if (!array.isArray() || array.size() < 1 || array.size() > MAX_QUESTIONS) {
-            throw new AiResponseInvalidException("질문 개수가 1~3개가 아닙니다.");
+        if (!array.isArray() || array.size() > MAX_QUESTIONS) {
+            throw new AiResponseInvalidException("질문 개수가 0~3개가 아닙니다.");
         }
         List<String> questions = new ArrayList<>();
         for (JsonNode node : array) {

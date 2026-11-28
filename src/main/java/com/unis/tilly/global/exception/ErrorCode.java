@@ -36,7 +36,7 @@ public enum ErrorCode {
     // Record
     QUESTION_NOT_FOUND(404, "존재하지 않는 질문입니다."),
     RECORD_LOCKED(409, "해당 주의 인사이트가 발행되어 수정할 수 없습니다."),
-    RECORD_EMPTY(422, "기록이 비어 있어 질문을 생성할 수 없습니다."),
+    RECORD_EMPTY(422, "완료한 할 일이나 회고가 있어야 질문을 생성할 수 있습니다."),
 
     // AI
     AI_GENERATION_FAILED(502, "AI 응답 생성에 실패했습니다."),

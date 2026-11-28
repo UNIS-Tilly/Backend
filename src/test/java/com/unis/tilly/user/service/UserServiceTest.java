@@ -148,21 +148,39 @@ class UserServiceTest {
     @Test
     void 선택_항목을_null로_보내면_해제된다() {
         User user = givenUser();
-        user.changeProfile("닉네임", Gender.MALE, 1999, JobGroup.RND, JobGroup.RND);
+        user.changeProfile("닉네임", Gender.MALE, 1999, JobGroup.RND, "소재 연구", JobGroup.RND);
 
         userService.updateProfile(1L, new UserService.ProfileCommand(
-                "닉네임", null, null, null, null, List.of(PARTNERSHIP)));
+                "닉네임", null, null, null, null, null, List.of(PARTNERSHIP)));
 
         assertThat(user.getGender()).isNull();
         assertThat(user.getAge()).isNull();
         assertThat(user.getCurrentJobGroup()).isNull();
+        assertThat(user.getCurrentJobDetail()).isNull();
         assertThat(user.getTargetJobGroup()).isNull();
+    }
+
+    @Test
+    void 재직_직군이_있으면_세부_직군을_저장한다() {
+        User user = givenUser();
+
+        userService.updateProfile(1L, new UserService.ProfileCommand(
+                "닉네임", null, null, JobGroup.IT_DEVELOPMENT, "백엔드 개발", null, List.of(PARTNERSHIP)));
+
+        assertThat(user.getCurrentJobDetail()).isEqualTo("백엔드 개발");
+    }
+
+    @Test
+    void 재직_직군_없이_세부_직군만_보내면_BAD_REQUEST() {
+        assertBadRequest(() -> userService.updateProfile(1L, new UserService.ProfileCommand(
+                "닉네임", null, null, null, "백엔드 개발", null, List.of(PARTNERSHIP))));
+        verify(userCompetencyRepository, never()).saveAll(anyList());
     }
 
     @Test
     void 공통_역량이_없으면_INVALID_COMPETENCY_SELECTION() {
         assertInvalidCompetency(command("닉네임", JobGroup.DESIGN, DSN_COMMUNICATION, DSN_TOOL));
-        assertInvalidCompetency(new UserService.ProfileCommand("닉네임", null, null, null, null, null));
+        assertInvalidCompetency(new UserService.ProfileCommand("닉네임", null, null, null, null, null, null));
     }
 
     @Test
@@ -218,13 +236,13 @@ class UserServiceTest {
         List<Competency> competencies = new ArrayList<>(Arrays.asList(PARTNERSHIP, null));
 
         assertBadRequest(() -> userService.updateProfile(1L, new UserService.ProfileCommand(
-                "닉네임", null, null, null, null, competencies)));
+                "닉네임", null, null, null, null, null, competencies)));
     }
 
     @Test
     void 프로필의_나이가_범위를_벗어나면_400() {
         assertBadRequest(() -> userService.updateProfile(1L, new UserService.ProfileCommand(
-                "닉네임", null, 101, null, null, List.of(PARTNERSHIP))));
+                "닉네임", null, 101, null, null, null, List.of(PARTNERSHIP))));
     }
 
     // ---- 성장 레벨 (4.6, D-143) ----
@@ -285,7 +303,7 @@ class UserServiceTest {
     }
 
     private UserService.ProfileCommand command(String nickname, JobGroup target, Competency... competencies) {
-        return new UserService.ProfileCommand(nickname, Gender.FEMALE, 25, JobGroup.IT_DEVELOPMENT, target,
+        return new UserService.ProfileCommand(nickname, Gender.FEMALE, 25, JobGroup.IT_DEVELOPMENT, null, target,
                 List.of(competencies));
     }
 

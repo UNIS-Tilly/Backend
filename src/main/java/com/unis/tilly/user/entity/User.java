@@ -51,6 +51,10 @@ public class User extends BaseEntity {
     @Column(name = "current_job_group", length = 30)
     private JobGroup currentJobGroup;
 
+    // 재직 직군의 세부 직군 (직접 입력, 선택). 재직 직군이 있을 때만 값이 있다
+    @Column(name = "current_job_detail", length = 30)
+    private String currentJobDetail;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "target_job_group", length = 30)
     private JobGroup targetJobGroup;
@@ -83,11 +87,12 @@ public class User extends BaseEntity {
 
     // 4.2 프로필 전체 교체 (역량은 user_competencies에서 따로 교체)
     public void changeProfile(String nickname, Gender gender, Integer age,
-                              JobGroup currentJobGroup, JobGroup targetJobGroup) {
+                              JobGroup currentJobGroup, String currentJobDetail, JobGroup targetJobGroup) {
         this.nickname = nickname;
         this.gender = gender;
         this.age = age;
         this.currentJobGroup = currentJobGroup;
+        this.currentJobDetail = currentJobDetail;
         this.targetJobGroup = targetJobGroup;
     }
 

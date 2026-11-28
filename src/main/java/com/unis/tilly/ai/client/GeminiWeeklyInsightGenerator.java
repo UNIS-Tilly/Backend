@@ -65,6 +65,7 @@ public class GeminiWeeklyInsightGenerator implements WeeklyInsightGenerator {
         }).toList();
         data.put("days", days);
         data.put("profile", input.profile());
+        data.put("currentJob", input.currentJob());
         return data;
     }
 

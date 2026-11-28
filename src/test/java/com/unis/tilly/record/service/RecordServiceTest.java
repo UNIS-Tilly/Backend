@@ -1,5 +1,10 @@
 package com.unis.tilly.record.service;
 
+import com.unis.tilly.user.enums.SocialProvider;
+import com.unis.tilly.user.enums.JobGroup;
+import com.unis.tilly.user.entity.User;
+import com.unis.tilly.ai.dto.QuestionGenerationInput;
+import com.unis.tilly.ai.dto.AiCurrentJob;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
 import com.unis.tilly.insight.service.InsightLockService;
@@ -29,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.Mockito.lenient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -55,6 +61,8 @@ class RecordServiceTest {
     private TaskService taskService;
     @Mock
     private UserService userService;
+
+    private User currentUser;
     @Mock
     private InsightLockService insightLockService;
 
@@ -65,6 +73,9 @@ class RecordServiceTest {
         Clock clock = Clock.fixed(NOW.atZone(SEOUL).toInstant(), SEOUL);
         recordService = new RecordService(recordRepository, questionRepository, reflectionRepository, taskService, userService,
                 insightLockService, clock);
+        // 질문 입력을 만들 때 재직 직군을 조회한다 (기본: 직군 없음)
+        currentUser = new User("a@example.com", "닉네임", SocialProvider.GOOGLE, "sub");
+        lenient().when(userService.getProfile(1L)).thenReturn(new UserService.UserProfile(currentUser, List.of()));
     }
 
     // ---- 6.1 요약 ----
@@ -304,6 +315,7 @@ class RecordServiceTest {
         assertThat(prepared.input().tasks()).extracting("title", "completed", "memo")
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("보고서", true, "구조를 바꿨다"));
         assertThat(prepared.input().reflection()).isEqualTo("오늘 회고");
+        assertThat(prepared.input().currentJob()).isNull();
     }
 
     @Test
@@ -333,6 +345,18 @@ class RecordServiceTest {
     }
 
     @Test
+    void RC06_질문_입력에_재직_직군과_세부_직군을_담는다() {
+        currentUser.changeProfile("닉네임", null, null, JobGroup.IT_DEVELOPMENT, "백엔드 개발", null);
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE))
+                .willReturn(Optional.of(new DailyReflection(1L, DATE, "회고")));
+
+        Optional<QuestionGenerationInput> input = recordService.prepareAutoQuestions(1L, DATE);
+
+        assertThat(input).isPresent();
+        assertThat(input.get().currentJob()).isEqualTo(new AiCurrentJob("IT/개발", "백엔드 개발"));
+    }
+
+    @Test
     void RC06_그날_할_일도_회고도_없으면_RECORD_EMPTY() {
         given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
         given(taskService.getTasksOn(1L, DATE)).willReturn(List.of());
@@ -349,19 +373,19 @@ class RecordServiceTest {
     }
 
     @Test
-    void RC06_자동_질문은_할_일이_있으면_입력을_만든다() {
+    void RC06_자동_질문은_완료한_할_일이_있으면_입력을_만든다() {
         DailyRecord record = record(RecordStatus.DRAFT);
         given(questionRepository.findAllByRecordIdOrderByOrderAsc(record.getId())).willReturn(List.of());
-        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", false, null)));
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", true, null)));
         given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
 
         assertThat(recordService.prepareAutoQuestions(1L, DATE)).isPresent();
     }
 
     @Test
-    void RC06_자동_질문은_기록_행이_없는_날도_할_일이_있으면_만든다() {
+    void RC06_자동_질문은_기록_행이_없는_날도_완료한_할_일이_있으면_만든다() {
         given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
-        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", false, null)));
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", true, null)));
         given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
 
         assertThat(recordService.prepareAutoQuestions(1L, DATE)).isPresent();
@@ -385,6 +409,47 @@ class RecordServiceTest {
 
         assertThat(recordService.prepareAutoQuestions(1L, DATE)).isEmpty();
         verify(taskService, never()).getTasksOn(anyLong(), any());
+    }
+
+    @Test
+    void RC06_미완료_할_일만_있고_회고가_없으면_질문_입력을_만들지_않는다() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", false, "메모"), task("회의", false, null)));
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+
+        assertThat(recordService.prepareAutoQuestions(1L, DATE)).isEmpty();
+        assertThatThrownBy(() -> recordService.prepareQuestions(1L, "2026-10-21", emptyContent()))
+                .isInstanceOf(CustomException.class)
+                .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.RECORD_EMPTY));
+    }
+
+    @Test
+    void RC06_미완료_할_일이_있어도_회고가_있으면_입력을_만들고_미완료_할_일도_담는다() {
+        given(recordRepository.findByUserIdAndDate(1L, DATE)).willReturn(Optional.empty());
+        given(taskService.getTasksOn(1L, DATE)).willReturn(List.of(task("보고서", false, null)));
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE))
+                .willReturn(Optional.of(new DailyReflection(1L, DATE, "회고")));
+
+        Optional<QuestionGenerationInput> input = recordService.prepareAutoQuestions(1L, DATE);
+
+        assertThat(input).isPresent();
+        assertThat(input.get().tasks()).extracting("title", "completed")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("보고서", false));
+    }
+
+    @Test
+    void RC06_질문_입력에_희망_직군과_선택_역량을_담는다() {
+        currentUser.changeProfile("닉네임", null, null, null, null, JobGroup.IT_DEVELOPMENT);
+        given(userService.getProfile(1L)).willReturn(new UserService.UserProfile(currentUser,
+                List.of(com.unis.tilly.user.enums.Competency.PARTNERSHIP)));
+        given(reflectionRepository.findByUserIdAndDate(1L, DATE))
+                .willReturn(Optional.of(new DailyReflection(1L, DATE, "회고")));
+
+        Optional<QuestionGenerationInput> input = recordService.prepareAutoQuestions(1L, DATE);
+
+        assertThat(input).isPresent();
+        assertThat(input.get().profile().targetJobGroupCode()).isEqualTo("IT_DEVELOPMENT");
+        assertThat(input.get().profile().competencies()).extracting("code").containsExactly("PARTNERSHIP");
     }
 
     @Test
