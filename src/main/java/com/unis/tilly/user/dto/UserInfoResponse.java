@@ -12,7 +12,7 @@ import java.util.List;
 // 4.1 내 정보 (4.2 응답도 같은 형식). competencies가 비어 있으면 프로필 입력 전
 public record UserInfoResponse(String nickname, String email, String workEndTime,
                                Gender gender, Integer age,
-                               JobGroup currentJobGroup, JobGroup targetJobGroup,
+                               JobGroup currentJobGroup, String currentJobDetail, JobGroup targetJobGroup,
                                List<Competency> competencies, int level) {
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
@@ -22,7 +22,7 @@ public record UserInfoResponse(String nickname, String email, String workEndTime
         String workEndTime = user.getWorkEndTime() == null ? null : user.getWorkEndTime().format(TIME_FORMAT);
         return new UserInfoResponse(user.getNickname(), user.getEmail(), workEndTime,
                 user.getGender(), user.getAge(),
-                user.getCurrentJobGroup(), user.getTargetJobGroup(),
+                user.getCurrentJobGroup(), user.getCurrentJobDetail(), user.getTargetJobGroup(),
                 profile.competencies(), user.getLevel());
     }
 }

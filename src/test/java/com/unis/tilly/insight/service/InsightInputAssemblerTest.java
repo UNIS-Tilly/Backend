@@ -1,5 +1,6 @@
 package com.unis.tilly.insight.service;
 
+import com.unis.tilly.ai.dto.AiCurrentJob;
 import com.unis.tilly.ai.dto.WeeklyInsightInput;
 import com.unis.tilly.insight.dto.InsightSnapshot;
 import com.unis.tilly.record.service.RecordService;
@@ -80,7 +81,7 @@ class InsightInputAssemblerTest {
         given(taskService.getTasksBetween(USER, LocalDate.of(2026, 10, 5), SUN)).willReturn(flowTasks);
         given(taskService.getTasksBetween(USER, MON.minusWeeks(1), MON.minusDays(1))).willReturn(previousWeekTasks);
         User user = new User("a@example.com", "닉네임", SocialProvider.GOOGLE, "sub");
-        user.changeProfile("닉네임", Gender.FEMALE, 25, JobGroup.DESIGN, JobGroup.IT_DEVELOPMENT);
+        user.changeProfile("닉네임", Gender.FEMALE, 25, JobGroup.DESIGN, "UX 디자인", JobGroup.IT_DEVELOPMENT);
         given(userService.getProfile(USER)).willReturn(new UserService.UserProfile(user,
                 List.of(Competency.PARTNERSHIP, Competency.DEV_PROBLEM_SOLVING)));
     }
@@ -171,6 +172,16 @@ class InsightInputAssemblerTest {
     }
 
     @Test
+    void IN03_재직_직군과_세부_직군은_업무_맥락으로_함께_보낸다() {
+        givenWeek(weekTasks(), completedDays());
+        givenOtherQueries(weekTasks(), List.of());
+
+        WeeklyInsightInput input = assembler.assemble(USER, assembler.collect(USER, MON)).input();
+
+        assertThat(input.currentJob()).isEqualTo(new AiCurrentJob("디자인", "UX 디자인"));
+    }
+
+    @Test
     void IN03_희망_직군이_없으면_직군_정보는_null이고_선택_역량만_준다() {
         givenWeek(weekTasks(), completedDays());
         given(taskService.getTasksBetween(USER, LocalDate.of(2026, 10, 5), SUN)).willReturn(weekTasks());
@@ -182,6 +193,7 @@ class InsightInputAssemblerTest {
 
         assertThat(profile.targetJobGroupCode()).isNull();
         assertThat(profile.targetJobGroupLabel()).isNull();
+        assertThat(assembler.assemble(USER, assembler.collect(USER, MON)).input().currentJob()).isNull();   // 재직 직군도 없음
         assertThat(profile.competencies()).extracting(WeeklyInsightInput.CompetencyInfo::code).containsExactly("RESILIENCE");
     }
 

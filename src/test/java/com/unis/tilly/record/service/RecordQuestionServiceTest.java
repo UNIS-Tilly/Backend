@@ -3,6 +3,7 @@ package com.unis.tilly.record.service;
 import com.unis.tilly.ai.client.QuestionGenerator;
 import com.unis.tilly.ai.dto.AiTaskInput;
 import com.unis.tilly.ai.dto.QuestionGenerationInput;
+import com.unis.tilly.ai.dto.WeeklyInsightInput;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
 import com.unis.tilly.record.entity.RecordQuestion;
@@ -30,7 +31,8 @@ class RecordQuestionServiceTest {
 
     private static final LocalDate DATE = LocalDate.of(2026, 10, 21);
     private static final QuestionGenerationInput INPUT =
-            new QuestionGenerationInput(DATE, List.of(new AiTaskInput("보고서", false, null)), null);
+            new QuestionGenerationInput(DATE, List.of(new AiTaskInput("보고서", true, null)), null, null,
+                    new WeeklyInsightInput.Profile(null, null, List.of()));
 
     @Mock
     private RecordService recordService;
@@ -131,6 +133,25 @@ class RecordQuestionServiceTest {
 
         assertThat(service.generateAutomatically(1L, DATE)).isTrue();
         verify(recordService).storeQuestions(1L, DATE, List.of("질문1", "질문2"));
+    }
+
+    @Test
+    void RC06_AI가_질문할_게_없다고_하면_저장하지_않고_빈_목록을_돌려준다() {
+        given(recordService.prepareQuestions(1L, "2026-10-21", content))
+                .willReturn(new RecordService.QuestionPreparation(DATE, List.of(), INPUT));
+        given(questionGenerator.generate(INPUT)).willReturn(List.of());
+
+        assertThat(service.getOrGenerate(1L, "2026-10-21", content).questions()).isEmpty();
+        verify(recordService, never()).storeQuestions(any(), any(), any());
+    }
+
+    @Test
+    void RC06_자동_질문은_AI가_질문할_게_없다고_하면_저장하지_않고_false() {
+        given(recordService.prepareAutoQuestions(1L, DATE)).willReturn(Optional.of(INPUT));
+        given(questionGenerator.generate(INPUT)).willReturn(List.of());
+
+        assertThat(service.generateAutomatically(1L, DATE)).isFalse();
+        verify(recordService, never()).storeQuestions(any(), any(), any());
     }
 
     @Test

@@ -32,14 +32,15 @@ class AiResponseValidatorTest {
                             List.of(new WeeklyInsightInput.AnswerInput("질문", "답변")), null)),
             new WeeklyInsightInput.Profile("IT_DEVELOPMENT", "IT/개발", List.of(
                     new WeeklyInsightInput.CompetencyInfo("PARTNERSHIP", "파트너십", "다른 사람의 목표달성을 지원"),
-                    new WeeklyInsightInput.CompetencyInfo("DEV_PROBLEM_SOLVING", "문제 해결 능력", "오류의 원인을 파악해 해결"))));
+                    new WeeklyInsightInput.CompetencyInfo("DEV_PROBLEM_SOLVING", "문제 해결 능력", "오류의 원인을 파악해 해결"))),
+            null);
 
     // ---- 질문 (6.5) ----
 
     @Test
     void RC06_질문은_1에서_3개만_통과한다() {
         assertThat(validator.questions(json("{\"questions\":[\" 질문1 \",\"질문2\"]}"))).containsExactly("질문1", "질문2");
-        assertInvalid(() -> validator.questions(json("{\"questions\":[]}")));
+        assertThat(validator.questions(json("{\"questions\":[]}"))).isEmpty();   // 질문할 게 없으면 빈 배열
         assertInvalid(() -> validator.questions(json("{\"questions\":[\"1\",\"2\",\"3\",\"4\"]}")));
         assertInvalid(() -> validator.questions(json("{\"questions\":[\" \"]}")));
         assertInvalid(() -> validator.questions(json("{\"other\":1}")));
@@ -67,7 +68,7 @@ class AiResponseValidatorTest {
     @Test
     void IN03_지난_주가_없으면_비교_숫자를_허용하지_않는다() {
         WeeklyInsightInput firstWeek = new WeeklyInsightInput(input.weekStart(), input.weekEnd(), input.weekLabel(),
-                input.stats(), null, false, input.days(), input.profile());
+                input.stats(), null, false, input.days(), input.profile(), null);
 
         assertInvalid(() -> validator.weeklyInsight(json(insight(
                 "완수율이 15%p 올랐어요", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")), firstWeek));
@@ -112,7 +113,7 @@ class AiResponseValidatorTest {
                 input.stats(), input.previousWeekStats(), false,
                 List.of(new WeeklyInsightInput.DayInput(LocalDate.of(2026, 10, 21),
                         List.of(new AiTaskInput("보고서", true, null)), List.of(), "   ")),
-                input.profile());
+                input.profile(), null);
 
         assertInvalid(() -> validator.weeklyInsight(json(insight(
                 "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"REFLECTION\"}", "행동")), blank));
@@ -156,7 +157,7 @@ class AiResponseValidatorTest {
     @Test
     void IN03_프로필이_없으면_역량_코드를_허용하지_않는다() {
         WeeklyInsightInput noProfile = new WeeklyInsightInput(input.weekStart(), input.weekEnd(), input.weekLabel(),
-                input.stats(), input.previousWeekStats(), false, input.days(), null);
+                input.stats(), input.previousWeekStats(), false, input.days(), null, null);
 
         assertInvalid(() -> validator.weeklyInsight(json(insight(
                 "제목", "소제목", "{\"date\":\"2026-10-21\",\"type\":\"MEMO\"}", "행동")), noProfile));

@@ -1,5 +1,6 @@
 package com.unis.tilly.insight.service;
 
+import com.unis.tilly.ai.dto.AiCurrentJob;
 import com.unis.tilly.ai.dto.AiTaskInput;
 import com.unis.tilly.ai.dto.WeeklyInsightInput;
 import com.unis.tilly.insight.dto.InsightSnapshot;
@@ -69,8 +70,9 @@ public class InsightInputAssembler {
         WeeklyInsight.Summary summary = new WeeklyInsight.Summary(
                 data.recordedDays(), data.memoCount(), data.reflectionCount(), data.answerCount(),
                 achievement.totalCount(), achievement.completedCount());
+        UserService.UserProfile userProfile = userService.getProfile(userId);
         WeeklyInsightInput input = new WeeklyInsightInput(weekStart, data.weekEnd(), WeekRules.label(weekStart),
-                stats, previous, data.insufficientContent(), days, profile(userId));
+                stats, previous, data.insufficientContent(), days, profile(userProfile), currentJob(userProfile));
         return new Assembled(input, summary, snapshots.write(achievement), snapshots.write(flow));
     }
 
@@ -109,16 +111,15 @@ public class InsightInputAssembler {
         return new WeeklyInsightInput.WeekStats(tasks.size(), (int) tasks.stream().filter(Task::isCompleted).count());
     }
 
-    // D-133: 희망 직군과 선택 역량(코드·표시명·정의)만. 닉네임·이메일·성별·나이는 보내지 않는다
-    private WeeklyInsightInput.Profile profile(Long userId) {
-        UserService.UserProfile profile = userService.getProfile(userId);
-        var target = profile.user().getTargetJobGroup();
-        return new WeeklyInsightInput.Profile(
-                target == null ? null : target.name(),
-                target == null ? null : target.getLabel(),
-                profile.competencies().stream()
-                        .map(c -> new WeeklyInsightInput.CompetencyInfo(c.name(), c.getLabel(), c.getDescription()))
-                        .toList());
+    // D-133: 강점 판단 기준은 희망 직군과 선택 역량(코드·표시명·정의)만. 닉네임·이메일·성별·나이는 보내지 않는다
+    private WeeklyInsightInput.Profile profile(UserService.UserProfile profile) {
+        return WeeklyInsightInput.Profile.of(profile.user().getTargetJobGroup(), profile.competencies());
+    }
+
+    // 재직 직군·세부 직군은 업무 맥락 참고용 (강점 판단 기준인 profile과 분리)
+    private AiCurrentJob currentJob(UserService.UserProfile profile) {
+        var current = profile.user().getCurrentJobGroup();
+        return AiCurrentJob.of(current == null ? null : current.getLabel(), profile.user().getCurrentJobDetail());
     }
 
     private String dayOfWeek(DayOfWeek day) {
