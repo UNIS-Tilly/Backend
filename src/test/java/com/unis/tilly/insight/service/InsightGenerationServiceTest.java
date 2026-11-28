@@ -4,6 +4,7 @@ import com.unis.tilly.ai.client.WeeklyInsightGenerator;
 import com.unis.tilly.ai.dto.WeeklyInsightResult;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
+import com.unis.tilly.notification.service.NotificationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -32,9 +33,11 @@ class InsightGenerationServiceTest {
     private WeeklyInsightGenerator generator;
     @Mock
     private InsightStore store;
+    @Mock
+    private NotificationService notificationService;
 
     private InsightGenerationService service(Executor executor) {
-        return new InsightGenerationService(generator, store, executor);
+        return new InsightGenerationService(generator, store, notificationService, executor);
     }
 
     @Test
@@ -46,6 +49,7 @@ class InsightGenerationServiceTest {
 
         verify(store).publish(10L, RESULT, ASSEMBLED);
         verify(store, never()).markFailed(any());
+        verify(notificationService).notifyInsightPublished(10L);   // D-152
     }
 
     @Test
@@ -56,6 +60,7 @@ class InsightGenerationServiceTest {
 
         verify(store).markFailed(10L);
         verify(store, never()).publish(any(), any(), any());
+        verify(notificationService, never()).notifyInsightPublished(any());
     }
 
     @Test

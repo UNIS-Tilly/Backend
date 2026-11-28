@@ -46,7 +46,10 @@ public enum ErrorCode {
     INSIGHT_NOT_FOUND(404, "존재하지 않는 인사이트입니다."),
     INSIGHT_NOT_REQUESTABLE(422, "지금은 인사이트 분석을 요청할 수 없습니다."),
     INSUFFICIENT_RECORDS(422, "분석할 수 있는 기록이 부족합니다."),
-    INSIGHT_ALREADY_PUBLISHED(409, "이미 발행된 주입니다.");
+    INSIGHT_ALREADY_PUBLISHED(409, "이미 발행된 주입니다."),
+
+    // Notification
+    NOTIFICATION_NOT_FOUND(404, "존재하지 않는 알림입니다.");
 
     private final int status;
     private final String message;

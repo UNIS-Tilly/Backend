@@ -4,6 +4,7 @@ import com.unis.tilly.ai.client.WeeklyInsightGenerator;
 import com.unis.tilly.ai.dto.WeeklyInsightResult;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
+import com.unis.tilly.notification.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskRejectedException;
@@ -20,12 +21,15 @@ public class InsightGenerationService {
 
     private final WeeklyInsightGenerator generator;
     private final InsightStore store;
+    private final NotificationService notificationService;
     private final Executor executor;
 
     public InsightGenerationService(WeeklyInsightGenerator generator, InsightStore store,
+                                    NotificationService notificationService,
                                     @Qualifier("insightExecutor") Executor executor) {
         this.generator = generator;
         this.store = store;
+        this.notificationService = notificationService;
         this.executor = executor;
     }
 
@@ -41,9 +45,11 @@ public class InsightGenerationService {
     }
 
     void run(Long insightId, InsightInputAssembler.Assembled assembled) {
+        boolean published = false;
         try {
             WeeklyInsightResult result = generator.generate(assembled.input());
-            if (!store.publish(insightId, result, assembled)) {
+            published = store.publish(insightId, result, assembled);
+            if (!published) {
                 log.warn("인사이트 결과를 저장하지 않음(이미 만료·실패 처리됨): insightId={}", insightId);
             }
         } catch (CustomException e) {
@@ -52,6 +58,10 @@ public class InsightGenerationService {
         } catch (RuntimeException e) {
             log.warn("인사이트 생성 실패: insightId={}, reason={}", insightId, e.getClass().getSimpleName());
             store.markFailed(insightId);
+        }
+        // 발행된 뒤의 알림 생성은 위 try 밖에서 한다: 알림이 실패해도 발행된 인사이트를 FAILED로 되돌리지 않는다 (D-152)
+        if (published) {
+            notificationService.notifyInsightPublished(insightId);
         }
     }
 }
