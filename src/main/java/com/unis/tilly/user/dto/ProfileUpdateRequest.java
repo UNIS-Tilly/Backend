@@ -17,10 +17,17 @@ public record ProfileUpdateRequest(
         Gender gender,
         Integer age,
         JobGroup currentJobGroup,
+        @Size(max = 30, message = "세부 직군은 30자 이하여야 합니다.") String currentJobDetail,
         JobGroup targetJobGroup,
         List<Competency> competencies) {
 
+    // 앞뒤 공백을 제거하고 빈 값은 null로 다룬다 (길이 검증은 정리한 값 기준)
+    public ProfileUpdateRequest {
+        currentJobDetail = currentJobDetail == null || currentJobDetail.isBlank() ? null : currentJobDetail.strip();
+    }
+
     public UserService.ProfileCommand toCommand() {
-        return new UserService.ProfileCommand(nickname, gender, age, currentJobGroup, targetJobGroup, competencies);
+        return new UserService.ProfileCommand(nickname, gender, age, currentJobGroup, currentJobDetail,
+                targetJobGroup, competencies);
     }
 }

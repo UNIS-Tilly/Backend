@@ -46,6 +46,7 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -115,7 +116,7 @@ class RecordQuestionFlowTest {
     @Test
     void RC06_입력을_먼저_저장하고_질문을_만들어_돌려준다() throws Exception {
         Session me = register();
-        Long taskId = createTask(me, "보고서", "2026-10-21");
+        Long taskId = createCompletedTask(me, "보고서", "2026-10-21");
         given(questionGenerator.generate(any())).willReturn(List.of("판단 기준은 무엇이었나요?", "어려웠던 점은요?"));
 
         askQuestions(me, "2026-10-21", Map.of("taskMemos", List.of(memo(taskId, "구조를 바꿨다")), "reflection", "회고"))
@@ -127,7 +128,7 @@ class RecordQuestionFlowTest {
                 .andExpect(jsonPath("$.data.questions[1].order").value(2));
 
         // 입력이 먼저 저장되었고(메모·회고), 기록 상태는 올라가지 않는다 (D-46, D-95)
-        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.incomplete[0].memo").value("구조를 바꿨다"));
+        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.completed[0].memo").value("구조를 바꿨다"));
         mockMvc.perform(get("/api/records/2026-10-21/reflection").header("Authorization", me.bearer()))
                 .andExpect(jsonPath("$.data.reflection").value("회고"));
         mockMvc.perform(get("/api/records/2026-10-21/summary").header("Authorization", me.bearer()))
@@ -149,7 +150,7 @@ class RecordQuestionFlowTest {
     @Test
     void RC06_질문이_이미_있으면_다시_만들지_않고_본문은_저장한다() throws Exception {
         Session me = register();
-        Long taskId = createTask(me, "보고서", "2026-10-21");
+        Long taskId = createCompletedTask(me, "보고서", "2026-10-21");
         given(questionGenerator.generate(any())).willReturn(List.of("질문1"));
         MvcResult first = askQuestions(me, "2026-10-21", Map.of()).andExpect(status().isOk()).andReturn();
         Number questionId = (Number) ((List<Map<String, Object>>) data(first).get("questions")).get(0).get("id");
@@ -162,18 +163,32 @@ class RecordQuestionFlowTest {
                 .andExpect(jsonPath("$.data.questions[0].answer").value("내 답변"));
 
         verify(questionGenerator, times(1)).generate(any());   // 재생성 없음 (D-47)
-        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.incomplete[0].memo").value("두 번째 메모"));
+        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.completed[0].memo").value("두 번째 메모"));
     }
 
     @Test
     void RC06_AI가_4개를_줘도_질문은_최대_3개만_저장한다() throws Exception {
         Session me = register();
-        createTask(me, "보고서", "2026-10-21");
+        createCompletedTask(me, "보고서", "2026-10-21");
         given(questionGenerator.generate(any())).willReturn(List.of("1", "2", "3", "4"));
 
         askQuestions(me, "2026-10-21", Map.of())
                 .andExpect(jsonPath("$.data.questions.length()").value(3))
                 .andExpect(jsonPath("$.data.questions[2].order").value(3));
+    }
+
+    @Test
+    void RC06_AI가_질문할_게_없다고_하면_빈_목록이고_저장도_기록_행_생성도_하지_않는다() throws Exception {
+        Session me = register();
+        createCompletedTask(me, "보고서", "2026-10-21");
+        given(questionGenerator.generate(any())).willReturn(List.of());
+
+        askQuestions(me, "2026-10-21", Map.of())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.questions.length()").value(0));
+        mockMvc.perform(get("/api/records/2026-10-21/questions").header("Authorization", me.bearer()))
+                .andExpect(jsonPath("$.data.questions.length()").value(0));
+        assertThat(recordQuestionService.generateAutomatically(me.userId(), DAY)).isFalse();
     }
 
     @Test
@@ -205,7 +220,7 @@ class RecordQuestionFlowTest {
     @Test
     void RC06_AI가_실패하면_502_504이고_입력은_저장되며_다시_시도할_수_있다() throws Exception {
         Session me = register();
-        Long taskId = createTask(me, "보고서", "2026-10-21");
+        Long taskId = createCompletedTask(me, "보고서", "2026-10-21");
         given(questionGenerator.generate(any()))
                 .willThrow(new CustomException(ErrorCode.AI_GENERATION_FAILED))
                 .willThrow(new CustomException(ErrorCode.AI_TIMEOUT))
@@ -219,20 +234,20 @@ class RecordQuestionFlowTest {
                 .andExpect(jsonPath("$.errorCode").value("AI_TIMEOUT"));
 
         // 실패해도 입력은 저장되고 질문은 만들어지지 않았다 (퇴근은 그대로 가능)
-        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.incomplete[0].memo").doesNotExist());
+        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.completed[0].memo").doesNotExist());
         mockMvc.perform(get("/api/records/2026-10-21/questions").header("Authorization", me.bearer()))
                 .andExpect(jsonPath("$.data.questions.length()").value(0));
 
         askQuestions(me, "2026-10-21", Map.of("taskMemos", List.of(memo(taskId, "저장될 메모"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.questions[0].text").value("다시 만든 질문"));
-        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.incomplete[0].memo").value("저장될 메모"));
+        getTasks(me, "2026-10-21").andExpect(jsonPath("$.data.completed[0].memo").value("저장될 메모"));
     }
 
     @Test
     void RC06_퇴근_완료_뒤에도_질문이_없으면_만들_수_있다() throws Exception {
         Session me = register();
-        createTask(me, "보고서", "2026-10-21");
+        createCompletedTask(me, "보고서", "2026-10-21");
         mockMvc.perform(post("/api/records/2026-10-21/complete").header("Authorization", me.bearer())
                 .contentType("application/json").content("{}")).andExpect(status().isOk());
         given(questionGenerator.generate(any())).willReturn(List.of("퇴근 뒤 질문"));
@@ -245,9 +260,51 @@ class RecordQuestionFlowTest {
     }
 
     @Test
+    void RC06_미완료_할_일만_있고_회고가_없으면_422이고_AI를_호출하지_않는다() throws Exception {
+        Session me = register();
+        createTask(me, "아직 못 끝낸 일", "2026-10-21");
+
+        askQuestions(me, "2026-10-21", Map.of())
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("RECORD_EMPTY"));
+        assertThat(recordQuestionService.generateAutomatically(me.userId(), DAY)).isFalse();
+
+        verify(questionGenerator, never()).generate(any());
+    }
+
+    @Test
+    void RC06_미완료_할_일이_있어도_회고가_있으면_질문을_만들고_할_일은_그대로_보낸다() throws Exception {
+        Session me = register();
+        createTask(me, "아직 못 끝낸 일", "2026-10-21");
+        given(questionGenerator.generate(any())).willReturn(List.of("회고 질문"));
+
+        askQuestions(me, "2026-10-21", Map.of("reflection", "회고"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<QuestionGenerationInput> captor = ArgumentCaptor.forClass(QuestionGenerationInput.class);
+        verify(questionGenerator).generate(captor.capture());
+        assertThat(captor.getValue().tasks()).extracting("title", "completed")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("아직 못 끝낸 일", false));
+    }
+
+    @Test
+    void RC06_질문_입력에_희망_직군_프로필이_들어간다() throws Exception {
+        Session me = register();
+        createCompletedTask(me, "보고서", "2026-10-21");
+        given(questionGenerator.generate(any())).willReturn(List.of("질문"));
+
+        askQuestions(me, "2026-10-21", Map.of()).andExpect(status().isOk());
+
+        ArgumentCaptor<QuestionGenerationInput> captor = ArgumentCaptor.forClass(QuestionGenerationInput.class);
+        verify(questionGenerator).generate(captor.capture());
+        assertThat(captor.getValue().profile()).isNotNull();
+        assertThat(captor.getValue().profile().competencies()).isEmpty();   // 방금 가입해 역량을 고르지 않았다
+    }
+
+    @Test
     void RC06_다른_사용자의_할_일과_질문은_쓰이지도_보이지도_않는다() throws Exception {
         Session owner = register();
-        createTask(owner, "남의 일", "2026-10-21");
+        createCompletedTask(owner, "남의 일", "2026-10-21");
         given(questionGenerator.generate(any())).willReturn(List.of("남의 질문"));
         askQuestions(owner, "2026-10-21", Map.of()).andExpect(status().isOk());
         Session me = register();
@@ -273,7 +330,7 @@ class RecordQuestionFlowTest {
     @Test
     void RC06_생성된_질문에_임시저장으로_답변할_수_있다() throws Exception {
         Session me = register();
-        createTask(me, "보고서", "2026-10-21");
+        createCompletedTask(me, "보고서", "2026-10-21");
         given(questionGenerator.generate(any())).willReturn(List.of("질문1", "질문2"));
         MvcResult result = askQuestions(me, "2026-10-21", Map.of()).andReturn();
         List<Map<String, Object>> questions = (List<Map<String, Object>>) data(result).get("questions");
@@ -295,7 +352,7 @@ class RecordQuestionFlowTest {
     @Test
     void RC06_자동_질문은_오늘_기록으로_만들고_이미_있으면_건너뛴다() throws Exception {
         Session me = register();
-        createTask(me, "보고서", "2026-10-21");
+        createCompletedTask(me, "보고서", "2026-10-21");
         given(questionGenerator.generate(any())).willReturn(List.of("자동 질문"));
 
         assertThat(recordQuestionService.generateAutomatically(me.userId(), DAY)).isTrue();
@@ -312,7 +369,7 @@ class RecordQuestionFlowTest {
     @Test
     void RC06_자동_질문은_이미_퇴근_완료했거나_할_일도_회고도_없으면_건너뛴다() throws Exception {
         Session completed = register();
-        createTask(completed, "보고서", "2026-10-21");
+        createCompletedTask(completed, "보고서", "2026-10-21");
         mockMvc.perform(post("/api/records/2026-10-21/complete").header("Authorization", completed.bearer())
                 .contentType("application/json").content("{}")).andExpect(status().isOk());
         Session empty = register();
@@ -326,7 +383,7 @@ class RecordQuestionFlowTest {
     @Test
     void RC06_자동_질문이_AI_실패하면_질문을_만들지_않는다() throws Exception {
         Session me = register();
-        createTask(me, "보고서", "2026-10-21");
+        createCompletedTask(me, "보고서", "2026-10-21");
         given(questionGenerator.generate(any())).willThrow(new CustomException(ErrorCode.AI_TIMEOUT));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> recordQuestionService.generateAutomatically(me.userId(), DAY))
@@ -360,6 +417,15 @@ class RecordQuestionFlowTest {
         map.put("answer", answer);
         map.put("skipped", skipped);
         return map;
+    }
+
+    // 질문은 완료한 할 일이나 회고가 있어야 만들어진다
+    private Long createCompletedTask(Session session, String title, String date) throws Exception {
+        Long id = createTask(session, title, date);
+        mockMvc.perform(patch("/api/tasks/" + id).header("Authorization", session.bearer())
+                        .contentType("application/json").content("{\"completed\":true}"))
+                .andExpect(status().isOk());
+        return id;
     }
 
     private Long createTask(Session session, String title, String date) throws Exception {

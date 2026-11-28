@@ -8,6 +8,6 @@ import java.util.List;
 // 실패 시 CustomException(AI_GENERATION_FAILED / AI_TIMEOUT)
 public interface QuestionGenerator {
 
-    // 1~3개의 질문 문장
+    // 0~3개의 질문 문장 (구체화할 질문이 없으면 빈 목록)
     List<String> generate(QuestionGenerationInput input);
 }

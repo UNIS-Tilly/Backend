@@ -130,6 +130,37 @@ class UserFlowTest {
     }
 
     @Test
+    void 세부_직군은_앞뒤_공백을_지워_저장하고_빈_값이면_null이다() throws Exception {
+        String accessToken = registerAndGetAccessToken(uniqueEmail(), "닉네임");
+        String thirty = "가".repeat(30);
+
+        // 공백을 뺀 길이가 30자면 통과
+        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"currentJobGroup\":\"IT_DEVELOPMENT\",\"currentJobDetail\":\"  "
+                + thirty + "  \",\"competencies\":[\"PARTNERSHIP\"]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentJobDetail").value(thirty));
+        mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
+                .andExpect(jsonPath("$.data.currentJobDetail").value(thirty));
+
+        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"currentJobDetail\":\"   \",\"competencies\":[\"PARTNERSHIP\"]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentJobDetail").doesNotExist());
+    }
+
+    @Test
+    void 세부_직군이_30자를_넘거나_재직_직군이_없으면_400_BAD_REQUEST() throws Exception {
+        String accessToken = registerAndGetAccessToken(uniqueEmail(), "닉네임");
+
+        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"currentJobGroup\":\"IT_DEVELOPMENT\",\"currentJobDetail\":\""
+                + "가".repeat(31) + "\",\"competencies\":[\"PARTNERSHIP\"]}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+        putProfile(accessToken, "{\"nickname\":\"닉네임\",\"currentJobDetail\":\"백엔드 개발\",\"competencies\":[\"PARTNERSHIP\"]}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("BAD_REQUEST"));
+    }
+
+    @Test
     void 프로필은_전체_교체되어_같은_역량을_다시_보내도_된다() throws Exception {
         String accessToken = registerAndGetAccessToken(uniqueEmail(), "닉네임");
         putProfile(accessToken, """

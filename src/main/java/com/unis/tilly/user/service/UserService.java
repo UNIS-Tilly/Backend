@@ -58,11 +58,12 @@ public class UserService {
     @Transactional
     public UserProfile updateProfile(Long userId, ProfileCommand command) {
         validateAge(command.age());
+        validateJobDetail(command.currentJobGroup(), command.currentJobDetail());
         validateCompetencies(command.targetJobGroup(), command.competencies());
 
         User user = findById(userId);
         user.changeProfile(command.nickname(), command.gender(), command.age(),
-                command.currentJobGroup(), command.targetJobGroup());
+                command.currentJobGroup(), command.currentJobDetail(), command.targetJobGroup());
 
         userCompetencyRepository.deleteAllByUserIdInBulk(userId);
         userCompetencyRepository.saveAll(command.competencies().stream()
@@ -118,6 +119,13 @@ public class UserService {
         }
         if (age < MIN_AGE || age > MAX_AGE) {
             throw new CustomException(ErrorCode.BAD_REQUEST, "나이는 " + MIN_AGE + "~" + MAX_AGE + " 사이여야 합니다.");
+        }
+    }
+
+    // 세부 직군은 재직 직군을 선택했을 때만 입력할 수 있다
+    private void validateJobDetail(JobGroup currentJobGroup, String currentJobDetail) {
+        if (currentJobDetail != null && currentJobGroup == null) {
+            throw new CustomException(ErrorCode.BAD_REQUEST, "세부 직군은 재직 직군을 선택해야 입력할 수 있습니다.");
         }
     }
 
@@ -180,7 +188,8 @@ public class UserService {
 
     // 4.2 요청 값 (역량 목록은 null이면 빈 목록으로 다룬다)
     public record ProfileCommand(String nickname, Gender gender, Integer age,
-                                 JobGroup currentJobGroup, JobGroup targetJobGroup, List<Competency> competencies) {
+                                 JobGroup currentJobGroup, String currentJobDetail,
+                                 JobGroup targetJobGroup, List<Competency> competencies) {
         public ProfileCommand {
             competencies = competencies == null ? List.of() : competencies;
         }

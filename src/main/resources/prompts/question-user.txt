@@ -2,6 +2,8 @@
 - date: 기록 날짜
 - tasks: 할 일 목록 (title: 제목, completed: 완료 여부, memo: 업무 메모, 없으면 null)
 - reflection: 그날 하루 회고 (없으면 null)
+- currentJob: 현재 재직 직군, 업무 맥락 참고용 (jobGroupLabel: 직군 대분류 / detail: 사용자가 직접 입력한 세부 직군, 없으면 null). 재직 직군이 없으면 null
+- profile: 희망 직군과 선택한 역량, 어떤 경험을 구체화할지 고르는 참고용 (targetJobGroupCode/targetJobGroupLabel: 희망 직군, 없으면 null / competencies: 선택한 역량 목록, 각각 code, label, definition, 비어 있을 수 있음)
 
 <records>
 {{records}}

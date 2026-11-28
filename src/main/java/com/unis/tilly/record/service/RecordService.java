@@ -1,7 +1,9 @@
 package com.unis.tilly.record.service;
 
+import com.unis.tilly.ai.dto.AiCurrentJob;
 import com.unis.tilly.ai.dto.AiTaskInput;
 import com.unis.tilly.ai.dto.QuestionGenerationInput;
+import com.unis.tilly.ai.dto.WeeklyInsightInput;
 import com.unis.tilly.global.exception.CustomException;
 import com.unis.tilly.global.exception.ErrorCode;
 import com.unis.tilly.insight.service.InsightLockService;
@@ -13,6 +15,8 @@ import com.unis.tilly.record.repository.DailyRecordRepository;
 import com.unis.tilly.record.repository.DailyReflectionRepository;
 import com.unis.tilly.record.repository.RecordQuestionRepository;
 import com.unis.tilly.task.service.TaskService;
+import com.unis.tilly.user.entity.User;
+import com.unis.tilly.user.enums.JobGroup;
 import com.unis.tilly.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -75,7 +79,7 @@ public class RecordService {
     }
 
     // 6.5 질문 받기, 트랜잭션 1 (AI 호출 전): 입력을 먼저 저장(manual:false 규칙, D-46·D-95)하고
-    // 이미 질문이 있으면 그대로, 없으면 AI 입력을 만든다. 그날 할 일도 회고도 없으면 422 RECORD_EMPTY (D-127).
+    // 이미 질문이 있으면 그대로, 없으면 AI 입력을 만든다. 완료한 할 일도 회고도 없으면 422 RECORD_EMPTY (D-127).
     // AI 호출은 DB 트랜잭션 밖에서 하므로 여기서 끝낸다. 호출이 실패해도 저장한 입력은 남는다.
     @Transactional
     public QuestionPreparation prepareQuestions(Long userId, String dateText, RecordContent content) {
@@ -95,7 +99,7 @@ public class RecordService {
     }
 
     // 6.6 자동 질문, AI 호출 전: 건너뛸 조건이면 빈 값 (D-138)
-    // 이미 질문이 있는 날, 잠긴 날, 이미 COMPLETED인 날, 그날 할 일도 회고도 없는 날
+    // 이미 질문이 있는 날, 잠긴 날, 이미 COMPLETED인 날, 완료한 할 일도 회고도 없는 날
     @Transactional(readOnly = true)
     public Optional<QuestionGenerationInput> prepareAutoQuestions(Long userId, LocalDate date) {
         if (isLocked(userId, date)) {
@@ -217,7 +221,8 @@ public class RecordService {
         return record.map(r -> questionRepository.findAllByRecordIdOrderByOrderAsc(r.getId())).orElse(List.of());
     }
 
-    // AI 입력(D-126): 그날 할 일(제목·완료 여부·메모)과 하루 회고. 둘 다 없으면 만들 수 없다 (D-127)
+    // AI 입력(D-126): 그날 할 일(제목·완료 여부·메모)과 하루 회고, 재직 직군, 희망 직군·선택 역량.
+    // 완료한 할 일이 하나도 없고 회고도 없으면 만들 수 없다 (D-127 변경 제안: 미완료 할 일만 있는 날은 질문할 대상이 없다)
     private Optional<QuestionGenerationInput> buildQuestionInput(Long userId, LocalDate date) {
         List<AiTaskInput> tasks = taskService.getTasksOn(userId, date).stream()
                 .map(task -> new AiTaskInput(task.getTitle(), task.isCompleted(), task.getMemo()))
@@ -225,10 +230,18 @@ public class RecordService {
         String reflection = reflectionRepository.findByUserIdAndDate(userId, date)
                 .map(DailyReflection::getContent)
                 .orElse(null);
-        if (tasks.isEmpty() && reflection == null) {
+        if (tasks.stream().noneMatch(AiTaskInput::completed) && reflection == null) {
             return Optional.empty();
         }
-        return Optional.of(new QuestionGenerationInput(date, tasks, reflection));
+        UserService.UserProfile profile = userService.getProfile(userId);
+        return Optional.of(new QuestionGenerationInput(date, tasks, reflection, currentJob(profile.user()),
+                WeeklyInsightInput.Profile.of(profile.user().getTargetJobGroup(), profile.competencies())));
+    }
+
+    // 재직 직군·세부 직군 (질문을 그 업무에 맞추기 위한 맥락, 재직 직군이 없으면 null)
+    private AiCurrentJob currentJob(User user) {
+        JobGroup group = user.getCurrentJobGroup();
+        return AiCurrentJob.of(group == null ? null : group.getLabel(), user.getCurrentJobDetail());
     }
 
     // 메모·답변·회고 전체 교체. 실패하면 트랜잭션 전체가 롤백된다. 저장할 내용이 하나라도 있으면 true
