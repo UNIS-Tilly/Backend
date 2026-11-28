@@ -163,7 +163,8 @@ public class AiResponseValidator {
                 throw new AiResponseInvalidException("제목·소제목의 숫자가 올바르지 않습니다.");
             }
             if (!allowed.contains(number)) {
-                throw new AiResponseInvalidException("제목·소제목의 숫자가 서버 계산값과 다릅니다.");
+                // 어떤 숫자가 걸렸는지 로그로 알 수 있게 숫자만 남긴다(제목 문장·기록 원문은 남기지 않는다)
+                throw new AiResponseInvalidException("제목·소제목의 숫자가 서버 계산값과 다릅니다. (숫자 " + number + ")");
             }
         }
     }
